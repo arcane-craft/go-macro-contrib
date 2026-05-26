@@ -13,7 +13,7 @@ github.com/arcane-craft/go-macro-contrib/register
 
 ## Minimum go-macro version
 
-Requires `github.com/arcane-craft/go-macro` at the version pinned in `go.mod` (currently `v0.0.0` for local development; use a released tag in production).
+Requires `github.com/arcane-craft/go-macro` at the version pinned in `go.mod` (currently `v0.1.0`).
 
 ## Local development (sibling checkout)
 
