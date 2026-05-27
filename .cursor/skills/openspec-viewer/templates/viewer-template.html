@@ -1,0 +1,269 @@
+<!-- OpenSpec Viewer Template — 暗色单文件 HTML -->
+<!-- 用法：复制此文件，替换 spec 标题、Purpose、Requirements 等内容 -->
+<!-- 标记 TODO 的地方需要根据具体 spec 填充 -->
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenSpec Viewer — TODO:SPEC_NAME</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2129;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --must: #f85149;
+    --must-bg: rgba(248,81,73,0.1);
+    --mustnot: #da3633;
+    --mustnot-bg: rgba(218,54,51,0.1);
+    --should: #d29922;
+    --should-bg: rgba(210,153,34,0.1);
+    --may: #3fb950;
+    --may-bg: rgba(63,185,80,0.1);
+    --scenario-bg: rgba(31,111,235,0.06);
+    --tag-radius: 4px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 2rem 2rem 1.5rem; position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(12px);
+  }
+  .header h1 { font-size: 1.6rem; font-weight: 700; color: var(--accent); margin-bottom: 0.25rem; }
+  .header .purpose { color: var(--text-muted); font-size: 0.95rem; }
+  .header .meta { display: flex; gap: 1.5rem; margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted); }
+  .header .meta span { display: flex; align-items: center; gap: 0.35rem; }
+
+  /* Layout */
+  .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 4rem; }
+  .layout { display: grid; grid-template-columns: 240px 1fr; gap: 2rem; align-items: start; }
+
+  /* Sidebar */
+  .sidebar { position: sticky; top: 120px; max-height: calc(100vh - 140px); overflow-y: auto; }
+  .sidebar h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.75rem; }
+  .sidebar a {
+    display: block; padding: 0.35rem 0.75rem; color: var(--text-muted); text-decoration: none;
+    font-size: 0.85rem; border-left: 2px solid transparent;
+    border-radius: 0 var(--tag-radius) var(--tag-radius) 0; transition: all 0.15s;
+  }
+  .sidebar a:hover { color: var(--text); background: var(--surface); border-left-color: var(--accent); }
+
+  /* Dependency graph */
+  .dep-graph { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 2rem; }
+  .dep-graph h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 1rem; }
+  .dep-graph svg { width: 100%; height: auto; }
+
+  /* Requirement card */
+  .req-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.25rem; overflow: hidden; transition: border-color 0.2s; }
+  .req-card:hover { border-color: var(--accent); }
+  .req-card.open { border-color: var(--accent); }
+  .req-header { display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.25rem; cursor: pointer; user-select: none; }
+  .req-header:hover { background: var(--surface2); }
+  .req-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #000; font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .req-title { font-size: 1rem; font-weight: 600; flex: 1; }
+  .req-tags { display: flex; gap: 0.4rem; flex-shrink: 0; }
+  .req-toggle { color: var(--text-muted); font-size: 1.2rem; transition: transform 0.2s; flex-shrink: 0; }
+  .req-card.open .req-toggle { transform: rotate(90deg); }
+  .req-body { display: none; padding: 0 1.25rem 1.25rem; border-top: 1px solid var(--border); }
+  .req-card.open .req-body { display: block; }
+
+  /* Description with keyword highlighting */
+  .req-desc { font-size: 0.92rem; line-height: 1.8; color: var(--text); margin-bottom: 1rem; padding: 0.75rem 1rem; background: var(--surface2); border-radius: 6px; }
+  .req-desc .kw-must { color: var(--must); font-weight: 700; }
+  .req-desc .kw-mustnot { color: var(--mustnot); font-weight: 700; }
+  .req-desc .kw-should { color: var(--should); font-weight: 700; }
+  .req-desc .kw-may { color: var(--may); font-weight: 700; }
+  .req-desc code { background: rgba(110,118,129,0.15); padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.88em; color: #ffa657; }
+
+  /* Table */
+  .req-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.88rem; }
+  .req-table th { text-align: left; padding: 0.5rem 0.75rem; background: var(--surface2); color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+  .req-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .req-table tr:last-child td { border-bottom: none; }
+  .req-table code { background: rgba(110,118,129,0.15); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; color: #ffa657; }
+
+  /* Scenario */
+  .scenario { background: var(--scenario-bg); border: 1px solid rgba(31,111,235,0.15); border-radius: 6px; padding: 0.85rem 1rem; margin-bottom: 0.75rem; }
+  .scenario-title { font-size: 0.82rem; font-weight: 600; color: var(--accent); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem; }
+  .scenario-title::before { content: '▶'; font-size: 0.65rem; }
+  .scenario-steps { list-style: none; font-size: 0.88rem; }
+  .scenario-steps li { padding: 0.2rem 0; display: flex; gap: 0.5rem; }
+  .step-label { font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.45rem; border-radius: 3px; flex-shrink: 0; margin-top: 0.15rem; }
+  .step-when .step-label { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .step-then .step-label { background: rgba(63,185,80,0.15); color: var(--may); }
+  .step-given .step-label { background: rgba(210,153,34,0.15); color: var(--should); }
+
+  /* Tags */
+  .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: var(--tag-radius); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .tag-must { background: var(--must-bg); color: var(--must); border: 1px solid rgba(248,81,73,0.25); }
+  .tag-mustnot { background: var(--mustnot-bg); color: var(--mustnot); border: 1px solid rgba(218,54,51,0.25); }
+  .tag-should { background: var(--should-bg); color: var(--should); border: 1px solid rgba(210,153,34,0.25); }
+  .tag-may { background: var(--may-bg); color: var(--may); border: 1px solid rgba(63,185,80,0.25); }
+  .tag-count { background: rgba(88,166,255,0.1); color: var(--accent); border: 1px solid rgba(88,166,255,0.2); }
+
+  /* Summary */
+  .summary-bar { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .summary-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; }
+  .summary-item .num { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+
+  /* Legend */
+  .legend { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted); }
+  .legend-item { display: flex; align-items: center; gap: 0.35rem; }
+
+  /* Responsive */
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .container { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ HEADER ═══════════════════ -->
+<!-- TODO: 替换标题、Purpose、统计数字 -->
+<div class="header">
+  <h1>📐 TODO:SPEC_NAME Specification</h1>
+  <div class="purpose">TODO: 一句话 Purpose 摘要</div>
+  <div class="meta">
+    <span>📋 TODO:N Requirements</span>
+    <span>🧪 TODO:N Scenarios</span>
+    <span>🔑 RFC 2119</span>
+  </div>
+</div>
+
+<div class="container">
+  <div class="layout">
+
+    <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+    <!-- TODO: 列出所有 Requirement 标题的锚链接 -->
+    <nav class="sidebar">
+      <h3>Requirements</h3>
+      <!-- TODO: 每个 Requirement 一行 <a href="#reqN"> -->
+      <a href="#req1">1. TODO:Requirement标题</a>
+      <h3 style="margin-top:1.2rem">Quick Ref</h3>
+      <a href="#legend">🔑 关键词图例</a>
+      <a href="#graph">🕸️ 依赖关系</a>
+    </nav>
+
+    <!-- ═══════════════════ MAIN ═══════════════════ -->
+    <main>
+
+      <!-- Summary -->
+      <div class="summary-bar">
+        <div class="summary-item"><span class="num">TODO</span> Requirements</div>
+        <div class="summary-item"><span class="num">TODO</span> Scenarios</div>
+        <div class="summary-item"><span class="num">TODO</span> MUST 约束</div>
+        <div class="summary-item"><span class="num">TODO</span> SHOULD</div>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend" id="legend">
+        <div class="legend-item"><span class="tag tag-must">MUST</span> 绝对要求</div>
+        <div class="legend-item"><span class="tag tag-mustnot">MUST NOT</span> 绝对禁止</div>
+        <div class="legend-item"><span class="tag tag-should">SHOULD</span> 推荐</div>
+        <div class="legend-item"><span class="tag tag-may">MAY</span> 可选</div>
+      </div>
+
+      <!-- Dependency Graph (TODO: 按实际依赖绘制，无依赖则删除此区块) -->
+      <div class="dep-graph" id="graph">
+        <h3>🕸️ 需求依赖关系</h3>
+        <svg viewBox="0 0 700 160" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6" fill="none" stroke="#58a6ff" stroke-width="1.2"/>
+            </marker>
+          </defs>
+          <!-- TODO: 按实际依赖绘制节点和箭头 -->
+          <!-- 节点模板: <rect x="X" y="Y" width="W" height="36" rx="6" fill="#161b22" stroke="COLOR" stroke-width="1.5"/> -->
+          <!--          <text x="CX" y="CY" text-anchor="middle" fill="COLOR" font-size="12" font-weight="600">标题</text> -->
+          <!-- 箭头模板: <line x1="X1" y1="Y1" x2="X2" y2="Y2" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#arrow)" opacity="0.7"/> -->
+        </svg>
+      </div>
+
+      <!-- ═══════════════════ REQUIREMENT CARDS ═══════════════════ -->
+      <!-- TODO: 复制下面的卡片模板，每个 Requirement 一份 -->
+      <!-- 第一个卡片加 class="req-card open"（默认展开），其余用 class="req-card" -->
+
+      <!--
+      === CARD TEMPLATE (复制此块) ===
+
+      <div class="req-card" id="reqN">
+        <div class="req-header">
+          <span class="req-num">N</span>
+          <span class="req-title">TODO:Requirement标题</span>
+          <span class="req-tags">
+            <span class="tag tag-must">MUST</span>           ← 按实际关键词选 tag-must/tag-mustnot/tag-should/tag-may
+            <span class="tag tag-count">X scenarios</span>   ← 场景数
+          </span>
+          <span class="req-toggle">▸</span>
+        </div>
+        <div class="req-body">
+          <div class="req-desc">
+            TODO: 原文描述，关键词替换为：
+              MUST     → <span class="kw-must">MUST</span>
+              MUST NOT → <span class="kw-mustnot">MUST NOT</span>
+              SHOULD   → <span class="kw-should">SHOULD</span>
+              MAY      → <span class="kw-may">MAY</span>
+              代码     → <code>xxx</code>
+          </div>
+
+          ← 如有表格，放这里（可选）
+          <table class="req-table">
+            <tr><th>列1</th><th>列2</th><th>列3</th></tr>
+            <tr><td><code>xxx</code></td><td>xxx</td><td>xxx</td></tr>
+          </table>
+
+          ← 每个 Scenario 一个 div
+          <div class="scenario">
+            <div class="scenario-title">TODO:场景名</div>
+            <ul class="scenario-steps">
+              <li class="step-given"><span class="step-label">Given</span> TODO:前置条件</li>
+              <li class="step-when"><span class="step-label">When</span> TODO:触发条件</li>
+              <li class="step-then"><span class="step-label">Then</span> TODO:期望结果（含MUST高亮）</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      === END CARD TEMPLATE ===
+      -->
+
+    </main>
+  </div>
+</div>
+
+<script>
+  // 折叠交互：仅用此处绑定，勿在 req-header 上加 onclick（否则会 toggle 两次）
+  (function () {
+    function bindToggle() {
+      document.querySelectorAll('.req-card .req-header').forEach(function (header) {
+        header.addEventListener('click', function (e) {
+          e.preventDefault();
+          var card = header.closest('.req-card');
+          if (card) card.classList.toggle('open');
+        });
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bindToggle);
+    } else {
+      bindToggle();
+    }
+  })();
+</script>
+</body>
+</html>
