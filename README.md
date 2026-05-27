@@ -103,13 +103,20 @@ go test ./...
 
 ### inline
 
-`inline.Inline(expr)` 在**表达式位置**展开为 `expr` 本身，相当于去掉一层包装。
+`inline` 按被调函数**返回值个数**（0～3）选桩，在宏展开阶段将同文件内可内联的函数调用替换为函数体（形参代入实参），语义接近编译器内联。
 
-```go
-x := inline.Inline(1 + g()) // 展开后等价于 x := 1 + g()
-```
+| 桩 | 返回值 n | 典型写法 |
+|----|----------|----------|
+| `Inline0` | 0 | `inline.Inline0(func() { cleanup() })`（语句位置） |
+| `Inline` | 1 | `return inline.Inline(add(1, 2))` |
+| `Inline2` | 2 | `a, b := inline.Inline2(split())` |
+| `Inline3` | 3 | 三值赋值或 `return` |
 
-只用于表达式语境（例如 `return` 右侧、赋值右侧）。写在语句等其它位置时，展开器会报错。
+可内联函数（首版）：同文件、直接标识符调用、函数体为单条 `return`（或 `n=0` 的无返回值语句体）、非 variadic。
+
+`Inline` 对非函数调用实参仍做 **unwrap**（去掉包装），例如 `inline.Inline(1 + g())` 在表达式位置等价于 `1 + g()`。
+
+`Inline0` 因 Go 类型限制，须用 `func() { ... }` 包装无返回值调用；`Inline2`/`Inline3` 须在赋值或 `return` 语境使用。
 
 ### try
 

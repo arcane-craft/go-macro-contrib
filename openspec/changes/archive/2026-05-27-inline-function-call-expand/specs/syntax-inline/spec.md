@@ -1,10 +1,5 @@
-# syntax-inline Specification
+## MODIFIED Requirements
 
-## Purpose
-
-定义官方 `inline` 宏库的语法桩、`InlineExpand` 展开语义、import/link 约定及 mactest 要求。
-
-## Requirements
 ### Requirement: Inline 语法桩
 
 `inline` 包 MUST 提供下列语法桩，函数体 MUST panic，并标注为宏桩不可直接调用；均 MUST 带 `//macro: syntax-inline` 并映射到同一 `InlineExpand`：
@@ -25,7 +20,7 @@
 
 #### Scenario: 单值宏源类型检查
 
-- **WHEN** 用户在 macro 主文件中编写 `x := Inline(42)`
+- **WHEN** 用户编写 `x := Inline(42)`
 - **THEN** `Inline` 桩 MUST 使该表达式通过类型检查（与展开后 `x := 42` 一致）
 
 #### Scenario: 双值赋值类型检查
@@ -45,7 +40,6 @@
 **内联路径**（实参可归一化为对内层 `*ast.CallExpr` 的引用，且 callee 为同文件可内联 `*ast.FuncDecl`）：
 
 - `n=1` 且 `SiteExpr`：MUST 返回 `ExpandResult{Expr: <代入后的单表达式>}`，MUST NOT 保留外层 callee 调用。
-- `n=1` 且 `SiteReturn`：MUST 返回 `ExpandResult{Stmts: ...}`，其中包含代入后的单表达式 `return`。
 - `n=0` 且 `SiteStmt`：MUST 返回 `ExpandResult{Stmts: ...}`，为代入后的函数体语句。
 - `n=2` 或 `n=3` 且 `SiteAssign`（及适用的 `SiteReturn`）：MUST 返回 `ExpandResult{Stmts: ...}`，完成对外层左值或 `return` 的赋值语义。
 - 可内联函数：同文件、直接标识符调用、形参与内层实参个数一致、函数体为可内联形状（`return` 结果个数与 `n` 一致，每个结果为单表达式；`n=0` 为无结果返回的语句体）。
@@ -55,7 +49,6 @@
 - `Inline` + `SiteExpr` + 实参非可内联 `CallExpr`：MUST 返回 `ExpandResult{Expr: <实参表达式>}`（unwrap）。
 - 已解析为同文件 `*ast.FuncDecl` 但不可内联：MUST 返回错误。
 - `Inline2`/`Inline3` 出现在 `SiteExpr`，或 `Inline0` 出现在 `SiteExpr`：MUST 返回错误，说明允许的调用点。
-- `Inline` 出现在 `SiteAssign` 或 `SiteStmt`（且未走内联 `Stmts` 路径）：MUST 返回错误，说明 `Inline` 仅用于表达式或 `return` 位置。
 
 #### Scenario: SiteExpr 内联单返回值调用
 
@@ -69,8 +62,8 @@
 
 #### Scenario: 桩与 callee 返回值个数不匹配
 
-- **WHEN** callee 返回 2 个值但用户使用 `Inline(split())`（且通过类型检查的其他路径不可用）
-- **THEN** `checkStubMatchesN` 或展开器 MUST 在可检测时返回错误，提示使用 `Inline2`
+- **WHEN** callee 返回 2 个值但用户使用 `Inline(split())`
+- **THEN** `InlineExpand` MUST 返回错误，提示使用 `Inline2`
 
 #### Scenario: SiteExpr 非调用实参保持 unwrap
 
@@ -82,32 +75,16 @@
 - **WHEN** callee 已解析为同文件 `*ast.FuncDecl` 但不满足可内联形状
 - **THEN** `InlineExpand` MUST 返回错误
 
-### Requirement: 可选官方宏库与引入方式
+#### Scenario: 非表达式语境对 Inline 的限制
 
-`inline` 包 MUST 在 `go-macro-contrib` 仓库内作为官方宏库发布，路径为 `github.com/arcane-craft/go-macro-contrib/inline`。使用方 MUST 在宏主文件中 import 该路径，且 expand 工具的 `linked` map MUST 包含该 import path 与 `InlineExpand`，方可展开 `Inline(...)` 及同语法族其它桩。
+- **WHEN** `Inline` 出现在 `SiteAssign`、`SiteReturn` 或 `SiteStmt` 且未走内联 `Stmts` 路径
+- **THEN** 行为由实现与 mactest 定义；首版 MAY 在单值 `SiteAssign` 支持内联为 `Stmts`，否则返回错误说明仅 `SiteExpr` 支持纯 unwrap
 
-#### Scenario: 未 import 时不展开
+## ADDED Requirements
 
-- **WHEN** 宏主文件调用 `Inline(...)` 但未 import `github.com/arcane-craft/go-macro-contrib/inline`
-- **THEN** 展开管线 MUST NOT 注册 `syntax-inline`
+### Requirement: 多桩与多返回值 mactest
 
-#### Scenario: import 但未 link 时不展开
-
-- **WHEN** 宏主文件 import `github.com/arcane-craft/go-macro-contrib/inline`，但 expand 工具 `linked` 未含该 path
-- **THEN** 对 `Inline(...)` 的调用 MUST NOT 被展开
-
-### Requirement: 与框架边界
-
-`inline` 包 MUST NOT 依赖 `macro` 包内的 error 载荷、k 校验或 Try 专用 API；仅使用通用 `Context` 与 `ExpandResult`。
-
-#### Scenario: 独立 syntax-id
-
-- **WHEN** 注册表构建完成
-- **THEN** 各 `Inline*` 桩 MUST 映射到 `syntax-inline` 的 `InlineExpand`，且 MUST NOT 与 `syntax-try` 共用展开器
-
-### Requirement: mactest 单测
-
-`InlineExpand` MUST 具备不依赖 `//go:build macro` 的 `mactest` 单测，测试包路径 MUST 为 `go-macro-contrib` 仓库内的 `inline`（或 `inline_test`）。测试 MUST 覆盖：`Inline` 单值内联与 unwrap、`Inline2` 在 `SiteAssign` 的内联、`Inline0` 在 `SiteStmt` 的内联（`func()` 包装）、桩与 `n` 不匹配错误、不可内联函数体错误。
+`InlineExpand` 的 `mactest` MUST 覆盖：`Inline` 单值内联与 unwrap、`Inline2` 在 `SiteAssign` 的内联、`Inline0` 在 `SiteStmt` 的内联（`func()` 包装）、桩与 `n` 不匹配错误、不可内联函数体错误。
 
 #### Scenario: 纯 Expand 测试
 
@@ -116,5 +93,5 @@
 
 #### Scenario: Inline2 与 Inline 区分
 
-- **WHEN** 测试对双返回值 callee 校验 `checkStubMatchesN("Inline", 2)`
-- **THEN** MUST 断言失败并提示 `Inline2`
+- **WHEN** mactest 对双返回值 callee 使用 `Inline`
+- **THEN** 测试 MUST 断言展开失败并提示 `Inline2`
