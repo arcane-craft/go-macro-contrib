@@ -10,7 +10,6 @@ import (
 )
 
 //macro: syntax-try
-
 // TryExpand expands Try* macro calls into error-handling statement blocks.
 func TryExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, error) {
 	if len(call.Args) != 1 {

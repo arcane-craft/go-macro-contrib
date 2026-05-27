@@ -7,7 +7,6 @@ import (
 )
 
 //macro: syntax-inline
-
 // InlineExpand expands Inline(...) to its sole argument expression.
 func InlineExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, error) {
 	switch ctx.Site() {
