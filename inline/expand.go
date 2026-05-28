@@ -31,7 +31,7 @@ func InlineExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, er
 		if len(call.Args) != 1 {
 			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Inline expects exactly one argument")
 		}
-		return macro.ExpandResult{Expr: bareExpr}, nil
+		return macro.ExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: bareExpr}, nil
 	}
 
 	if innerCall == nil {
@@ -49,7 +49,7 @@ func InlineExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, er
 	fn, err := resolveCalleeFuncDecl(ctx, innerCall)
 	if err != nil {
 		if stubN == 1 && site == macro.SiteExpr {
-			return macro.ExpandResult{Expr: bareExpr}, nil
+			return macro.ExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: bareExpr}, nil
 		}
 		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 	}
@@ -66,18 +66,18 @@ func InlineExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, er
 			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 		}
 		macro.StampStmtPos(ctx.MacroPos(), stmts)
-		return macro.ExpandResult{Stmts: stmts}, nil
+		return macro.ExpandResult{Target: macro.SpliceReplaceExprStmt, Stmts: stmts}, nil
 	case n == 1 && (site == macro.SiteExpr || site == macro.SiteReturn):
 		expr, err := substituteExpr(ctx, fn, innerCall, retExprs[0])
 		if err != nil {
 			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 		}
 		if site == macro.SiteExpr {
-			return macro.ExpandResult{Expr: expr}, nil
+			return macro.ExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: expr}, nil
 		}
 		stmts := []ast.Stmt{&ast.ReturnStmt{Results: []ast.Expr{expr}}}
 		macro.StampStmtPos(ctx.MacroPos(), stmts)
-		return macro.ExpandResult{Stmts: stmts}, nil
+		return macro.ExpandResult{Target: macro.SpliceReplaceReturnStmt, Stmts: stmts}, nil
 	case n >= 2 && (site == macro.SiteAssign || site == macro.SiteReturn):
 		rhs, err := substituteExprs(ctx, fn, innerCall, retExprs)
 		if err != nil {
@@ -91,12 +91,12 @@ func InlineExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, er
 			stmt := &ast.AssignStmt{Tok: assign.Tok, Lhs: assign.Lhs, Rhs: rhs}
 			stmts := []ast.Stmt{stmt}
 			macro.StampStmtPos(ctx.MacroPos(), stmts)
-			return macro.ExpandResult{Stmts: stmts}, nil
+			return macro.ExpandResult{Target: macro.SpliceReplaceAssignStmt, Stmts: stmts}, nil
 		}
 		stmt := &ast.ReturnStmt{Results: rhs}
 		stmts := []ast.Stmt{stmt}
 		macro.StampStmtPos(ctx.MacroPos(), stmts)
-		return macro.ExpandResult{Stmts: stmts}, nil
+		return macro.ExpandResult{Target: macro.SpliceReplaceReturnStmt, Stmts: stmts}, nil
 	default:
 		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "inline: unexpected site/arity combination")
 	}

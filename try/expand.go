@@ -88,7 +88,18 @@ func TryExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, error
 
 func tryExpandResult(ctx macro.Context, stmts []ast.Stmt) macro.ExpandResult {
 	macro.StampStmtPos(ctx.MacroPos(), stmts)
-	return macro.ExpandResult{Stmts: stmts}
+	var target macro.SpliceTarget
+	switch ctx.Site() {
+	case macro.SiteAssign:
+		target = macro.SpliceReplaceAssignStmt
+	case macro.SiteReturn:
+		target = macro.SpliceReplaceReturnStmt
+	case macro.SiteStmt:
+		target = macro.SpliceReplaceExprStmt
+	default:
+		target = macro.SpliceReplaceAssignStmt
+	}
+	return macro.ExpandResult{Target: target, Stmts: stmts}
 }
 
 type resultType struct {

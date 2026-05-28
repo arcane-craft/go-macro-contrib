@@ -44,15 +44,15 @@
 
 **内联路径**（实参可归一化为对内层 `*ast.CallExpr` 的引用，且 callee 为同文件可内联 `*ast.FuncDecl`）：
 
-- `n=1` 且 `SiteExpr`：MUST 返回 `ExpandResult{Expr: <代入后的单表达式>}`，MUST NOT 保留外层 callee 调用。
-- `n=1` 且 `SiteReturn`：MUST 返回 `ExpandResult{Stmts: ...}`，其中包含代入后的单表达式 `return`。
-- `n=0` 且 `SiteStmt`：MUST 返回 `ExpandResult{Stmts: ...}`，为代入后的函数体语句。
-- `n=2` 或 `n=3` 且 `SiteAssign`（及适用的 `SiteReturn`）：MUST 返回 `ExpandResult{Stmts: ...}`，完成对外层左值或 `return` 的赋值语义。
+- `n=1` 且 `SiteExpr`：MUST 返回 `ExpandResult{Target: SpliceReplaceCallExpr, Expr: <代入后的单表达式>}`，MUST NOT 保留外层 callee 调用。
+- `n=1` 且 `SiteReturn`：MUST 返回 `Target: SpliceReplaceReturnStmt` 与非空 `Stmts`，其中包含代入后的单表达式 `return`。
+- `n=0` 且 `SiteStmt`：MUST 返回 `Target: SpliceReplaceExprStmt` 与非空 `Stmts`，为代入后的函数体语句。
+- `n=2` 或 `n=3` 且 `SiteAssign`（及适用的 `SiteReturn`）：MUST 返回 `Target: SpliceReplaceAssignStmt` 或 `SpliceReplaceReturnStmt` 与非空 `Stmts`，完成对外层左值或 `return` 的赋值语义。
 - 可内联函数：同文件、直接标识符调用、形参与内层实参个数一致、函数体为可内联形状（`return` 结果个数与 `n` 一致，每个结果为单表达式；`n=0` 为无结果返回的语句体）。
 
 **回退与拒绝**：
 
-- `Inline` + `SiteExpr` + 实参非可内联 `CallExpr`：MUST 返回 `ExpandResult{Expr: <实参表达式>}`（unwrap）。
+- `Inline` + `SiteExpr` + 实参非可内联 `CallExpr`：MUST 返回 `ExpandResult{Target: SpliceReplaceCallExpr, Expr: <实参表达式>}`（unwrap）。
 - 已解析为同文件 `*ast.FuncDecl` 但不可内联：MUST 返回错误。
 - `Inline2`/`Inline3` 出现在 `SiteExpr`，或 `Inline0` 出现在 `SiteExpr`：MUST 返回错误，说明允许的调用点。
 - `Inline` 出现在 `SiteAssign` 或 `SiteStmt`（且未走内联 `Stmts` 路径）：MUST 返回错误，说明 `Inline` 仅用于表达式或 `return` 位置。

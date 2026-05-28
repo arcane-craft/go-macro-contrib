@@ -20,9 +20,9 @@ func helper() (int, error) { return 0, nil }
 func f() (int, error) { return 0, nil }
 func Try[T any](v T, err error) T { panic("stub") }
 `
-	fset, _, fn, info, pkg := parseTrySnippet(t, src)
+	fset, f, fn, info, pkg := parseTrySnippet(t, src)
 	call := &ast.CallExpr{Fun: ast.NewIdent("Try"), Lparen: token.NoPos}
-	ctx := &fakeContext{fset: fset, info: info, pkg: pkg, call: call, stub: "Try", site: macro.SiteAssign, enclosing: fn, pos: fset.File(1).Pos(1)}
+	ctx := &fakeContext{fset: fset, file: f, info: info, pkg: pkg, call: call, stub: "Try", site: macro.SiteAssign, enclosing: fn, pos: fset.File(1).Pos(1)}
 	_, err := TryExpand(ctx, call)
 	if err == nil || !strings.Contains(err.Error(), "one argument") {
 		t.Fatalf("got %v", err)
@@ -35,7 +35,7 @@ func pair() (int, string, error) { return 0, "", nil }
 func f() (int, string, error) { return 0, "", nil }
 func Try[T any](v T, err error) T { panic("stub") }
 `
-	fset, _, fn, info, pkg := parseTrySnippet(t, src)
+	fset, f, fn, info, pkg := parseTrySnippet(t, src)
 	pairCall := &ast.CallExpr{
 		Fun:  ast.NewIdent("pair"),
 		Args: nil,
@@ -51,7 +51,7 @@ func Try[T any](v T, err error) T { panic("stub") }
 	)
 	info.Types[pairCall] = types.TypeAndValue{Type: pairResults}
 	ctx := &fakeContext{
-		fset: fset, info: info, pkg: pkg, call: tryCall, stub: "Try", site: macro.SiteAssign,
+		fset: fset, file: f, info: info, pkg: pkg, call: tryCall, stub: "Try", site: macro.SiteAssign,
 		enclosing: fn, pos: tryCall.Pos(),
 	}
 	_, err := TryExpand(ctx, tryCall)
@@ -69,7 +69,7 @@ func TestCheckStubMatchesKMessages(t *testing.T) {
 	}
 }
 
-func parseTrySnippet(t *testing.T, src string) (*token.FileSet, *ast.CallExpr, *ast.FuncDecl, *types.Info, *types.Package) {
+func parseTrySnippet(t *testing.T, src string) (*token.FileSet, *ast.File, *ast.FuncDecl, *types.Info, *types.Package) {
 	t.Helper()
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "p.go", src, 0)
@@ -93,5 +93,5 @@ func parseTrySnippet(t *testing.T, src string) (*token.FileSet, *ast.CallExpr, *
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fset, nil, fn, info, pkg
+	return fset, f, fn, info, pkg
 }

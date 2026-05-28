@@ -13,6 +13,7 @@ import (
 // fakeContext implements macro.Context for internal error-path tests.
 type fakeContext struct {
 	fset      *token.FileSet
+	file      *ast.File
 	info      *types.Info
 	pkg       *types.Package
 	call      *ast.CallExpr
@@ -24,7 +25,11 @@ type fakeContext struct {
 	counter   atomic.Uint64
 }
 
-func (c *fakeContext) FileSet() *token.FileSet       { return c.fset }
+func (c *fakeContext) FileSet() *token.FileSet { return c.fset }
+func (c *fakeContext) File() *ast.File          { return c.file }
+func (c *fakeContext) LegalSpliceTargets() []macro.SpliceTarget {
+	return macro.LegalSpliceTargetsForCall(c.file, c.call)
+}
 func (c *fakeContext) Types() *types.Info            { return c.info }
 func (c *fakeContext) Package() *types.Package       { return c.pkg }
 func (c *fakeContext) Call() *ast.CallExpr           { return c.call }

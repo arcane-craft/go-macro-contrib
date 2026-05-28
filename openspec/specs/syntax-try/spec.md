@@ -99,9 +99,9 @@
 
 ### Requirement: Try 必须使用 Stmts（禁止 Exprs 简化 return）
 
-在 `SiteAssign`、`SiteReturn`、`SiteStmt` 语境，`TryExpand` MUST 返回非空 `ExpandResult.Stmts`。在 `SiteReturn` **MUST NOT** 使用 `ExpandResult.Exprs` 仅替换 return 的表达式列表。
+在 `SiteAssign`、`SiteReturn`、`SiteStmt` 语境，`TryExpand` MUST 设置显式 `ExpandResult.Target`（分别为 `SpliceReplaceAssignStmt`、`SpliceReplaceReturnStmt`、`SpliceReplaceExprStmt`）并返回非空 `Stmts`。在 `SiteReturn` **MUST NOT** 使用 `Target: SpliceReplaceReturnResults` 或仅设置 `Exprs`。
 
-本要求属于 **syntax-try provider**，非 `macro` 框架 MUST；框架仅按 `macro-expander` 的 Site × 字段矩阵贴回 AST。
+本要求属于 **syntax-try provider**；框架按 `ExpandResult.Target` 贴回 AST（见 `go-macro` `macro-expander` 规范）。
 
 #### Scenario: SiteReturn 禁止 Exprs
 
