@@ -194,10 +194,6 @@ replace github.com/arcane-craft/go-macro => ../go-macro
 
 然后在本仓库根目录执行 `go test ./...`。
 
-### OpenSpec
-
-官方语法包的 normative 规范在 `openspec/specs/`：`macro-contrib`、`syntax-inline`、`syntax-try`、`syntax-derive-stringer`、`syntax-wire-json`。
-
 ### 延伸阅读
 
 - [go-macro](https://github.com/arcane-craft/go-macro) — 框架、示例与宏作者指南
