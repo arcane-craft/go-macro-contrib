@@ -11,20 +11,20 @@ import (
 
 //macro: syntax-try
 // TryExpand expands Try* macro calls into error-handling statement blocks.
-func TryExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, error) {
+func TryExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResult, error) {
 	if len(call.Args) != 1 {
-		return macro.ExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "Try* expects one argument expression")
+		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "Try* expects one argument expression")
 	}
 	outer, err := outerResults(ctx)
 	if err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
 	}
 	k, err := calleePayloadCount(ctx, call.Args[0])
 	if err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
 	}
 	if err := checkStubMatchesK(ctx.StubName(), k); err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
 	}
 
 	fset := ctx.FileSet()
@@ -57,7 +57,7 @@ func TryExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, error
 	case macro.SiteAssign:
 		assignStmt, ok := findAssignStmt(ctx)
 		if !ok {
-			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected assignment context")
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected assignment context")
 		}
 		// After check, append success assignment to lhs
 		success := successAssign(assignStmt, valIdents, k)
@@ -78,15 +78,15 @@ func TryExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, error
 		return tryExpandResult(ctx, stmts), nil
 	case macro.SiteStmt:
 		if k != 0 {
-			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Try0 only allowed as statement for k=0")
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Try0 only allowed as statement for k=0")
 		}
 		return tryExpandResult(ctx, stmts), nil
 	default:
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Try* not allowed in expression position")
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Try* not allowed in expression position")
 	}
 }
 
-func tryExpandResult(ctx macro.Context, stmts []ast.Stmt) macro.ExpandResult {
+func tryExpandResult(ctx macro.CallContext, stmts []ast.Stmt) macro.CallExpandResult {
 	macro.StampStmtPos(ctx.MacroPos(), stmts)
 	var target macro.SpliceTarget
 	switch ctx.Site() {
@@ -99,7 +99,7 @@ func tryExpandResult(ctx macro.Context, stmts []ast.Stmt) macro.ExpandResult {
 	default:
 		target = macro.SpliceReplaceAssignStmt
 	}
-	return macro.ExpandResult{Target: target, Stmts: stmts}
+	return macro.CallExpandResult{Target: target, Stmts: stmts}
 }
 
 type resultType struct {
@@ -107,7 +107,7 @@ type resultType struct {
 	names []*ast.Ident
 }
 
-func outerResults(ctx macro.Context) ([]resultType, error) {
+func outerResults(ctx macro.CallContext) ([]resultType, error) {
 	var results *ast.FieldList
 	switch fn := ctx.EnclosingFunc().(type) {
 	case *ast.FuncDecl:
@@ -149,7 +149,7 @@ func outerResults(ctx macro.Context) ([]resultType, error) {
 	return out, nil
 }
 
-func calleePayloadCount(ctx macro.Context, expr ast.Expr) (k int, err error) {
+func calleePayloadCount(ctx macro.CallContext, expr ast.Expr) (k int, err error) {
 	tv, ok := ctx.Types().Types[expr]
 	if !ok {
 		return 0, fmt.Errorf("cannot type inner expression")
@@ -255,7 +255,7 @@ func zeroValueExpr(t types.Type) ast.Expr {
 	return &ast.Ident{Name: "nil"}
 }
 
-func findAssignStmt(ctx macro.Context) (*ast.AssignStmt, bool) {
+func findAssignStmt(ctx macro.CallContext) (*ast.AssignStmt, bool) {
 	call := ctx.Call()
 	// Reconstruct assign from call position is done by expander before TryExpand;
 	// use Call's parent via Types isn't available — inspect EnclosingFunc body.

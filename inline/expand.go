@@ -10,95 +10,95 @@ import (
 
 //macro: syntax-inline
 // InlineExpand inlines resolvable same-file function calls or unwraps Inline(expr) at SiteExpr.
-func InlineExpand(ctx macro.Context, call *ast.CallExpr) (macro.ExpandResult, error) {
+func InlineExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResult, error) {
 	fset := ctx.FileSet()
 	stubN, err := stubExpectedN(ctx.StubName())
 	if err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 	}
 
 	site := ctx.Site()
 	if err := checkSite(stubN, site); err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 	}
 
 	innerCall, bareExpr, err := innerCallFromArgs(call, stubN)
 	if err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 	}
 
 	if stubN == 1 && site == macro.SiteExpr && innerCall == nil {
 		if len(call.Args) != 1 {
-			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Inline expects exactly one argument")
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Inline expects exactly one argument")
 		}
-		return macro.ExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: bareExpr}, nil
+		return macro.CallExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: bareExpr}, nil
 	}
 
 	if innerCall == nil {
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected function call argument")
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected function call argument")
 	}
 
 	n, err := calleeResultCount(ctx, innerCall)
 	if err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 	}
 	if err := checkStubMatchesN(ctx.StubName(), n); err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 	}
 
 	fn, err := resolveCalleeFuncDecl(ctx, innerCall)
 	if err != nil {
 		if stubN == 1 && site == macro.SiteExpr {
-			return macro.ExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: bareExpr}, nil
+			return macro.CallExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: bareExpr}, nil
 		}
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 	}
 
 	retExprs, bodyStmts, err := inlineableBody(fn, n)
 	if err != nil {
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "cannot inline %s: %s", fn.Name.Name, err.Error())
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "cannot inline %s: %s", fn.Name.Name, err.Error())
 	}
 
 	switch {
 	case n == 0:
 		stmts, err := substituteStmts(ctx, fn, innerCall, bodyStmts)
 		if err != nil {
-			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 		}
 		macro.StampStmtPos(ctx.MacroPos(), stmts)
-		return macro.ExpandResult{Target: macro.SpliceReplaceExprStmt, Stmts: stmts}, nil
+		return macro.CallExpandResult{Target: macro.SpliceReplaceExprStmt, Stmts: stmts}, nil
 	case n == 1 && (site == macro.SiteExpr || site == macro.SiteReturn):
 		expr, err := substituteExpr(ctx, fn, innerCall, retExprs[0])
 		if err != nil {
-			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 		}
 		if site == macro.SiteExpr {
-			return macro.ExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: expr}, nil
+			return macro.CallExpandResult{Target: macro.SpliceReplaceCallExpr, Expr: expr}, nil
 		}
 		stmts := []ast.Stmt{&ast.ReturnStmt{Results: []ast.Expr{expr}}}
 		macro.StampStmtPos(ctx.MacroPos(), stmts)
-		return macro.ExpandResult{Target: macro.SpliceReplaceReturnStmt, Stmts: stmts}, nil
+		return macro.CallExpandResult{Target: macro.SpliceReplaceReturnStmt, Stmts: stmts}, nil
 	case n >= 2 && (site == macro.SiteAssign || site == macro.SiteReturn):
 		rhs, err := substituteExprs(ctx, fn, innerCall, retExprs)
 		if err != nil {
-			return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%s", err.Error())
 		}
 		if site == macro.SiteAssign {
 			assign, ok := findAssignStmt(ctx)
 			if !ok {
-				return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected assignment context")
+				return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected assignment context")
 			}
 			stmt := &ast.AssignStmt{Tok: assign.Tok, Lhs: assign.Lhs, Rhs: rhs}
 			stmts := []ast.Stmt{stmt}
 			macro.StampStmtPos(ctx.MacroPos(), stmts)
-			return macro.ExpandResult{Target: macro.SpliceReplaceAssignStmt, Stmts: stmts}, nil
+			return macro.CallExpandResult{Target: macro.SpliceReplaceAssignStmt, Stmts: stmts}, nil
 		}
 		stmt := &ast.ReturnStmt{Results: rhs}
 		stmts := []ast.Stmt{stmt}
 		macro.StampStmtPos(ctx.MacroPos(), stmts)
-		return macro.ExpandResult{Target: macro.SpliceReplaceReturnStmt, Stmts: stmts}, nil
+		return macro.CallExpandResult{Target: macro.SpliceReplaceReturnStmt, Stmts: stmts}, nil
 	default:
-		return macro.ExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "inline: unexpected site/arity combination")
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "inline: unexpected site/arity combination")
 	}
 }
 
@@ -200,7 +200,7 @@ func callFromFuncLitBody(fl *ast.FuncLit) *ast.CallExpr {
 	return c
 }
 
-func calleeResultCount(ctx macro.Context, inner *ast.CallExpr) (int, error) {
+func calleeResultCount(ctx macro.CallContext, inner *ast.CallExpr) (int, error) {
 	tv, ok := ctx.Types().Types[inner]
 	if !ok {
 		return 0, fmt.Errorf("cannot type inner call")
@@ -217,7 +217,7 @@ func calleeResultCount(ctx macro.Context, inner *ast.CallExpr) (int, error) {
 	return 1, nil
 }
 
-func astFileFor(ctx macro.Context) *ast.File {
+func astFileFor(ctx macro.CallContext) *ast.File {
 	pos := ctx.EnclosingFunc().Pos()
 	for node := range ctx.Types().Scopes {
 		f, ok := node.(*ast.File)
@@ -231,7 +231,7 @@ func astFileFor(ctx macro.Context) *ast.File {
 	return nil
 }
 
-func resolveCalleeFuncDecl(ctx macro.Context, inner *ast.CallExpr) (*ast.FuncDecl, error) {
+func resolveCalleeFuncDecl(ctx macro.CallContext, inner *ast.CallExpr) (*ast.FuncDecl, error) {
 	ident, ok := inner.Fun.(*ast.Ident)
 	if !ok {
 		return nil, fmt.Errorf("only direct identifier calls can be inlined")
@@ -292,7 +292,7 @@ func inlineableBody(fn *ast.FuncDecl, n int) ([]ast.Expr, []ast.Stmt, error) {
 	return ret.Results, nil, nil
 }
 
-func paramSubstMap(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr) (map[*types.Var]ast.Expr, error) {
+func paramSubstMap(ctx macro.CallContext, fn *ast.FuncDecl, inner *ast.CallExpr) (map[*types.Var]ast.Expr, error) {
 	if fn.Type.Params == nil {
 		if len(inner.Args) != 0 {
 			return nil, fmt.Errorf("argument count mismatch")
@@ -328,7 +328,7 @@ func paramSubstMap(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr) (ma
 	return subst, nil
 }
 
-func substituteExpr(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr, expr ast.Expr) (ast.Expr, error) {
+func substituteExpr(ctx macro.CallContext, fn *ast.FuncDecl, inner *ast.CallExpr, expr ast.Expr) (ast.Expr, error) {
 	subst, err := paramSubstMap(ctx, fn, inner)
 	if err != nil {
 		return nil, err
@@ -336,7 +336,7 @@ func substituteExpr(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr, ex
 	return applySubstExpr(ctx, expr, subst), nil
 }
 
-func substituteExprs(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr, exprs []ast.Expr) ([]ast.Expr, error) {
+func substituteExprs(ctx macro.CallContext, fn *ast.FuncDecl, inner *ast.CallExpr, exprs []ast.Expr) ([]ast.Expr, error) {
 	subst, err := paramSubstMap(ctx, fn, inner)
 	if err != nil {
 		return nil, err
@@ -348,7 +348,7 @@ func substituteExprs(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr, e
 	return out, nil
 }
 
-func substituteStmts(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr, stmts []ast.Stmt) ([]ast.Stmt, error) {
+func substituteStmts(ctx macro.CallContext, fn *ast.FuncDecl, inner *ast.CallExpr, stmts []ast.Stmt) ([]ast.Stmt, error) {
 	subst, err := paramSubstMap(ctx, fn, inner)
 	if err != nil {
 		return nil, err
@@ -360,7 +360,7 @@ func substituteStmts(ctx macro.Context, fn *ast.FuncDecl, inner *ast.CallExpr, s
 	return out, nil
 }
 
-func applySubstExpr(ctx macro.Context, expr ast.Expr, subst map[*types.Var]ast.Expr) ast.Expr {
+func applySubstExpr(ctx macro.CallContext, expr ast.Expr, subst map[*types.Var]ast.Expr) ast.Expr {
 	var sub func(ast.Expr) ast.Expr
 	sub = func(e ast.Expr) ast.Expr {
 		if e == nil {
@@ -399,7 +399,7 @@ func applySubstExpr(ctx macro.Context, expr ast.Expr, subst map[*types.Var]ast.E
 	return sub(expr)
 }
 
-func applySubstStmt(ctx macro.Context, stmt ast.Stmt, subst map[*types.Var]ast.Expr) ast.Stmt {
+func applySubstStmt(ctx macro.CallContext, stmt ast.Stmt, subst map[*types.Var]ast.Expr) ast.Stmt {
 	switch s := stmt.(type) {
 	case *ast.ExprStmt:
 		return &ast.ExprStmt{X: applySubstExpr(ctx, s.X, subst)}
@@ -423,7 +423,7 @@ func applySubstStmt(ctx macro.Context, stmt ast.Stmt, subst map[*types.Var]ast.E
 	}
 }
 
-func findAssignStmt(ctx macro.Context) (*ast.AssignStmt, bool) {
+func findAssignStmt(ctx macro.CallContext) (*ast.AssignStmt, bool) {
 	call := ctx.Call()
 	var found *ast.AssignStmt
 	inspect := func(body *ast.BlockStmt) {

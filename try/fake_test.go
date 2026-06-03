@@ -10,8 +10,8 @@ import (
 	"github.com/arcane-craft/go-macro/macro"
 )
 
-// fakeContext implements macro.Context for internal error-path tests.
-type fakeContext struct {
+// fakeCallContext implements macro.CallContext for internal error-path tests.
+type fakeCallContext struct {
 	fset      *token.FileSet
 	file      *ast.File
 	info      *types.Info
@@ -25,20 +25,20 @@ type fakeContext struct {
 	counter   atomic.Uint64
 }
 
-func (c *fakeContext) FileSet() *token.FileSet { return c.fset }
-func (c *fakeContext) File() *ast.File          { return c.file }
-func (c *fakeContext) LegalSpliceTargets() []macro.SpliceTarget {
+func (c *fakeCallContext) FileSet() *token.FileSet { return c.fset }
+func (c *fakeCallContext) File() *ast.File          { return c.file }
+func (c *fakeCallContext) LegalSpliceTargets() []macro.SpliceTarget {
 	return macro.LegalSpliceTargetsForCall(c.file, c.call)
 }
-func (c *fakeContext) Types() *types.Info            { return c.info }
-func (c *fakeContext) Package() *types.Package       { return c.pkg }
-func (c *fakeContext) Call() *ast.CallExpr           { return c.call }
-func (c *fakeContext) StubName() string              { return c.stub }
-func (c *fakeContext) SyntaxID() string              { return c.syntaxID }
-func (c *fakeContext) Site() macro.CallSiteKind      { return c.site }
-func (c *fakeContext) EnclosingFunc() ast.Node       { return c.enclosing }
-func (c *fakeContext) MacroPos() token.Pos           { return c.pos }
-func (c *fakeContext) TempIdent(prefix string) *ast.Ident {
+func (c *fakeCallContext) Types() *types.Info            { return c.info }
+func (c *fakeCallContext) Package() *types.Package       { return c.pkg }
+func (c *fakeCallContext) Call() *ast.CallExpr           { return c.call }
+func (c *fakeCallContext) StubName() string              { return c.stub }
+func (c *fakeCallContext) SyntaxID() string              { return c.syntaxID }
+func (c *fakeCallContext) Site() macro.CallSiteKind      { return c.site }
+func (c *fakeCallContext) EnclosingFunc() ast.Node       { return c.enclosing }
+func (c *fakeCallContext) MacroPos() token.Pos           { return c.pos }
+func (c *fakeCallContext) TempIdent(prefix string) *ast.Ident {
 	n := c.counter.Add(1)
 	return ast.NewIdent(fmt.Sprintf("%s%d", prefix, n))
 }

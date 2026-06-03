@@ -7,14 +7,14 @@
 ## Requirements
 ### Requirement: contrib 独立子 module
 
-官方宏库 MUST 在**独立 Git 仓库**中作为根 Go module 发布，module 路径为 `github.com/arcane-craft/go-macro-contrib`。`go-macro` 仓库 MUST NOT 再包含 `contrib/` 目录。
+官方宏库 MUST 在**独立 Git 仓库**中作为根 Go module 发布，module 路径为 `github.com/arcane-craft/go-macro-contrib`。`go-macro` 仓库 MUST NOT 再包含 `contrib/` 目录或顶层官方语法实现目录（如 `syntax/`、`derivestringer/`、`wirejson/`）。
 
-`go-macro` 根 module 的 `internal/expander`、`macro/expandtool` 及根 module 内所有测试 MUST NOT import 官方宏实现包（`inline`、`try`、`register`）。
+`go-macro` 根 module 的 `internal/expander`、`macro/expandtool` 及根 module 内所有测试 MUST NOT import 官方宏实现包（`inline`、`try`、`derivestringer`、`wirejson`、`register`）。
 
 #### Scenario: expander 不依赖 contrib 实现
 
 - **WHEN** 编译 `go-macro` 根 module 的 `internal/expander` 包
-- **THEN** MUST NOT import `github.com/arcane-craft/go-macro-contrib/inline` 或 `.../try`
+- **THEN** MUST NOT import `github.com/arcane-craft/go-macro-contrib/inline`、`.../try`、`.../derivestringer` 或 `.../wirejson`
 
 #### Scenario: 根测试不 import contrib
 
@@ -25,30 +25,39 @@
 
 官方宏库 MUST 仅通过下列 import 路径提供：
 
-- `github.com/arcane-craft/go-macro-contrib/inline`
-- `github.com/arcane-craft/go-macro-contrib/try`
+| 包目录 | syntax-id（典型） | import |
+|--------|-------------------|--------|
+| `inline` | `syntax-inline` | `github.com/arcane-craft/go-macro-contrib/inline` |
+| `try` | `syntax-try` | `github.com/arcane-craft/go-macro-contrib/try` |
+| `derivestringer` | `derive-stringer` | `github.com/arcane-craft/go-macro-contrib/derivestringer` |
+| `wirejson` | `wire-json` | `github.com/arcane-craft/go-macro-contrib/wirejson` |
 
-`go-macro` 根 module MUST NOT 再包含 `inline/`、`try/` 或 `contrib/`。
+`go-macro` 根 module MUST NOT 再包含 `inline/`、`try/`、`contrib/`、`syntax/` 或上述包的副本。
 
-#### Scenario: import 新路径
+#### Scenario: import derivestringer
 
-- **WHEN** 宏主文件 import `github.com/arcane-craft/go-macro-contrib/try`
-- **THEN** MUST 解析到 `go-macro-contrib` 仓库的 `try` 包
+- **WHEN** 宏主文件 import `github.com/arcane-craft/go-macro-contrib/derivestringer`
+- **THEN** MUST 解析到 `go-macro-contrib` 仓库的 `derivestringer` 包
 
 ### Requirement: 官方宏库与 cmd/macro expand 集成
 
-`go-macro-contrib` MUST NOT 提供 `register` 包。官方宏库（`inline`、`try`）应由 `cmd/macro expand` 基于 provider 上的 `//macro:` 指令自动发现并链接。
+`go-macro-contrib` MUST NOT 提供 `register` 包。官方宏库应由 `cmd/macro expand` 基于 provider 上的 `//macro:` 指令自动发现并链接：Call 宏 link `*Expand`（`CallExpander`），Decl 宏 link `*Expand`（`DeclExpander`），按 **syntax-id** 分别 `RegisterCall` / `RegisterDecl`。
 
 `go-macro-contrib` MUST NOT 提供 `Main`/`Run` 作为用户 expand 入口（该职责在 `cmd/macro` / `macro/expandtool`）。
 
-#### Scenario: 通过 expand 自动 link 官方宏库
+#### Scenario: 通过 expand 自动 link Call 宏
 
-- **WHEN** 宏主文件 import `github.com/arcane-craft/go-macro-contrib/inline` 或 `.../try` 并执行 `cmd/macro expand`
-- **THEN** 展开 MUST 成功链接对应 Expander，且无需 blank import `register`
+- **WHEN** 宏主文件 import `github.com/arcane-craft/go-macro-contrib/try` 并执行 `cmd/macro expand`
+- **THEN** 展开 MUST 成功链接 `TryExpand`，且无需 blank import `register`
+
+#### Scenario: 通过 expand 自动 link Decl 宏
+
+- **WHEN** 宏主文件 import `github.com/arcane-craft/go-macro-contrib/wirejson` 且 struct 匿名嵌入 `wirejson.WireJSON`，并执行 `cmd/macro expand`
+- **THEN** 展开 MUST 成功链接 `WireJSONExpand`（syntax-id `wire-json`）
 
 ### Requirement: contrib 独立测试
 
-`go-macro-contrib` 仓库 MUST 具备独立 `go test ./...`，含 inline/try 的 mactest 单测。
+`go-macro-contrib` 仓库 MUST 具备独立 `go test ./...`，含 `inline`、`try` 的 `mactest.ExpandCall` 单测，以及 `derivestringer`、`wirejson` 的 `mactest.ExpandDecl` 单测。
 
 #### Scenario: contrib 测试不依赖 go tool macro expand
 
@@ -58,6 +67,8 @@
 ### Requirement: contrib 依赖 go-macro 核心版本
 
 `go-macro-contrib` 的**已提交** `go.mod` **MUST** `require` 已发布的 `github.com/arcane-craft/go-macro` 版本（semver tag，非 `v0.0.0` 占位）；**MUST NOT** 在已提交 `go.mod` 中包含指向 sibling 目录的 `replace` 指令。
+
+所 pin 的 `go-macro` 版本 MUST 同时提供：**Call API**（`CallContext`、`CallExpandResult`、`CallExpander`）与 **Decl API**（`DeclContext`、`DeclExpandResult`、`DeclExpander`）及按 syntax-id 的 `RegisterCall` / `RegisterDecl`。
 
 README **MUST** 注明最低兼容核心版本，且所述版本 **MUST** 与 `go.mod` 中 pin 的 `require` 一致。
 

@@ -44,7 +44,7 @@
 
 **内联路径**（实参可归一化为对内层 `*ast.CallExpr` 的引用，且 callee 为同文件可内联 `*ast.FuncDecl`）：
 
-- `n=1` 且 `SiteExpr`：MUST 返回 `ExpandResult{Target: SpliceReplaceCallExpr, Expr: <代入后的单表达式>}`，MUST NOT 保留外层 callee 调用。
+- `n=1` 且 `SiteExpr`：MUST 返回 `CallExpandResult{Target: SpliceReplaceCallExpr, Expr: <代入后的单表达式>}`，MUST NOT 保留外层 callee 调用。
 - `n=1` 且 `SiteReturn`：MUST 返回 `Target: SpliceReplaceReturnStmt` 与非空 `Stmts`，其中包含代入后的单表达式 `return`。
 - `n=0` 且 `SiteStmt`：MUST 返回 `Target: SpliceReplaceExprStmt` 与非空 `Stmts`，为代入后的函数体语句。
 - `n=2` 或 `n=3` 且 `SiteAssign`（及适用的 `SiteReturn`）：MUST 返回 `Target: SpliceReplaceAssignStmt` 或 `SpliceReplaceReturnStmt` 与非空 `Stmts`，完成对外层左值或 `return` 的赋值语义。
@@ -52,7 +52,7 @@
 
 **回退与拒绝**：
 
-- `Inline` + `SiteExpr` + 实参非可内联 `CallExpr`：MUST 返回 `ExpandResult{Target: SpliceReplaceCallExpr, Expr: <实参表达式>}`（unwrap）。
+- `Inline` + `SiteExpr` + 实参非可内联 `CallExpr`：MUST 返回 `CallExpandResult{Target: SpliceReplaceCallExpr, Expr: <实参表达式>}`（unwrap）。
 - 已解析为同文件 `*ast.FuncDecl` 但不可内联：MUST 返回错误。
 - `Inline2`/`Inline3` 出现在 `SiteExpr`，或 `Inline0` 出现在 `SiteExpr`：MUST 返回错误，说明允许的调用点。
 - `Inline` 出现在 `SiteAssign` 或 `SiteStmt`（且未走内联 `Stmts` 路径）：MUST 返回错误，说明 `Inline` 仅用于表达式或 `return` 位置。
@@ -75,7 +75,7 @@
 #### Scenario: SiteExpr 非调用实参保持 unwrap
 
 - **WHEN** 展开 `Inline(42)` 且 `ctx.Site()` 为 `SiteExpr`
-- **THEN** `InlineExpand` MUST 返回 `ExpandResult{Expr: <实参表达式>}`
+- **THEN** `InlineExpand` MUST 返回 `CallExpandResult{Expr: <实参表达式>}`
 
 #### Scenario: SiteExpr 不可内联的同文件函数报错
 
@@ -98,7 +98,7 @@
 
 ### Requirement: 与框架边界
 
-`inline` 包 MUST NOT 依赖 `macro` 包内的 error 载荷、k 校验或 Try 专用 API；仅使用通用 `Context` 与 `ExpandResult`。
+`inline` 包 MUST NOT 依赖 `macro` 包内的 error 载荷、k 校验或 Try 专用 API；仅使用通用 `CallContext` 与 `CallExpandResult`。
 
 #### Scenario: 独立 syntax-id
 
@@ -107,7 +107,7 @@
 
 ### Requirement: mactest 单测
 
-`InlineExpand` MUST 具备不依赖 `//go:build macro` 的 `mactest` 单测，测试包路径 MUST 为 `go-macro-contrib` 仓库内的 `inline`（或 `inline_test`）。测试 MUST 覆盖：`Inline` 单值内联与 unwrap、`Inline2` 在 `SiteAssign` 的内联、`Inline0` 在 `SiteStmt` 的内联（`func()` 包装）、桩与 `n` 不匹配错误、不可内联函数体错误。
+`InlineExpand` MUST 具备不依赖 `//go:build macro` 的 `mactest.ExpandCall` 单测，测试包路径 MUST 为 `go-macro-contrib` 仓库内的 `inline`（或 `inline_test`）。测试 MUST 覆盖：`Inline` 单值内联与 unwrap、`Inline2` 在 `SiteAssign` 的内联、`Inline0` 在 `SiteStmt` 的内联（`func()` 包装）、桩与 `n` 不匹配错误、不可内联函数体错误。
 
 #### Scenario: 纯 Expand 测试
 

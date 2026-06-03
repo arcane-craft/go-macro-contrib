@@ -22,7 +22,7 @@ func Try[T any](v T, err error) T { panic("stub") }
 `
 	fset, f, fn, info, pkg := parseTrySnippet(t, src)
 	call := &ast.CallExpr{Fun: ast.NewIdent("Try"), Lparen: token.NoPos}
-	ctx := &fakeContext{fset: fset, file: f, info: info, pkg: pkg, call: call, stub: "Try", site: macro.SiteAssign, enclosing: fn, pos: fset.File(1).Pos(1)}
+	ctx := &fakeCallContext{fset: fset, file: f, info: info, pkg: pkg, call: call, stub: "Try", site: macro.SiteAssign, enclosing: fn, pos: fset.File(1).Pos(1)}
 	_, err := TryExpand(ctx, call)
 	if err == nil || !strings.Contains(err.Error(), "one argument") {
 		t.Fatalf("got %v", err)
@@ -50,7 +50,7 @@ func Try[T any](v T, err error) T { panic("stub") }
 		types.NewParam(0, nil, "", types.Universe.Lookup("error").Type()),
 	)
 	info.Types[pairCall] = types.TypeAndValue{Type: pairResults}
-	ctx := &fakeContext{
+	ctx := &fakeCallContext{
 		fset: fset, file: f, info: info, pkg: pkg, call: tryCall, stub: "Try", site: macro.SiteAssign,
 		enclosing: fn, pos: tryCall.Pos(),
 	}

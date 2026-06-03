@@ -99,14 +99,14 @@
 
 ### Requirement: Try 必须使用 Stmts（禁止 Exprs 简化 return）
 
-在 `SiteAssign`、`SiteReturn`、`SiteStmt` 语境，`TryExpand` MUST 设置显式 `ExpandResult.Target`（分别为 `SpliceReplaceAssignStmt`、`SpliceReplaceReturnStmt`、`SpliceReplaceExprStmt`）并返回非空 `Stmts`。在 `SiteReturn` **MUST NOT** 使用 `Target: SpliceReplaceReturnResults` 或仅设置 `Exprs`。
+在 `SiteAssign`、`SiteReturn`、`SiteStmt` 语境，`TryExpand` MUST 设置显式 `CallExpandResult.Target`（分别为 `SpliceReplaceAssignStmt`、`SpliceReplaceReturnStmt`、`SpliceReplaceExprStmt`）并返回非空 `Stmts`。在 `SiteReturn` **MUST NOT** 使用 `Target: SpliceReplaceReturnResults` 或仅设置 `Exprs`。
 
-本要求属于 **syntax-try provider**；框架按 `ExpandResult.Target` 贴回 AST（见 `go-macro` `macro-expander` 规范）。
+本要求属于 **syntax-try provider**；框架按 `CallExpandResult.Target` 贴回 AST（见 `go-macro` `macro-expander` 规范）。
 
 #### Scenario: SiteReturn 禁止 Exprs
 
 - **WHEN** `TryExpand` 处理 `return Try(g())` 且 `ctx.Site()` 为 `SiteReturn`
-- **THEN** 返回的 `ExpandResult` MUST 含 `Stmts` 且 MUST NOT 仅设置 `Exprs`
+- **THEN** 返回的 `CallExpandResult` MUST 含 `Stmts` 且 MUST NOT 仅设置 `Exprs`
 
 ### Requirement: Try 宏展开语义
 
@@ -120,7 +120,7 @@
 #### Scenario: return Try 完整错误处理
 
 - **WHEN** 外层为 `func f() (T, error)` 且源码为 `return Try(g())`，`g()` 为 `(T, error)`
-- **THEN** `TryExpand` MUST 返回 `ExpandResult.Stmts` 替换整条 `return`，含 `_v, _err := g()`、`if _err != nil { return <zero T>, _err }`、`return _v, nil`，且 MUST NOT 仅用 `Exprs` 简化
+- **THEN** `TryExpand` MUST 返回 `CallExpandResult.Stmts` 替换整条 `return`，含 `_v, _err := g()`、`if _err != nil { return <zero T>, _err }`、`return _v, nil`，且 MUST NOT 仅用 `Exprs` 简化
 
 #### Scenario: return Try2 完整错误处理
 
