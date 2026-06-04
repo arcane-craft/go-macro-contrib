@@ -155,7 +155,7 @@ go test ./...
 
 ### derivestringer — 生成 String()
 
-在 struct 中**匿名嵌入** `derivestringer.DeriveStringer`，展开后生成 `String()` 并移除嵌入桩。若类型已有 `String()` 方法，展开会报错。
+在 struct 中**匿名嵌入** `derivestringer.DeriveStringer`。marker 自带桩 `String()`（经提升供宏主文件类型检查）；展开后移除嵌入桩，并在 Target 尚无自有 `String()` 时生成字段拼接版 `String()`。若已手写 `func (T) String() string`，或由其它嵌入类型提升得到 `String()`，则不再生成，保留用户实现。
 
 ### wirejson — 补全 json tag
 

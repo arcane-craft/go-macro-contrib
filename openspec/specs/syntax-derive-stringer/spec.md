@@ -10,7 +10,14 @@
 
 `derive-stringer` syntax MUST 提供 marker 类型 `DeriveStringer`（无类型参数），其类型 doc MUST 含 `//macro: derive-stringer`。
 
+`DeriveStringer` MUST 提供 `func (DeriveStringer) String() string` 桩方法，函数体 MUST panic，并注明勿在未展开时调用。匿名嵌入后，Target 在宏主文件的类型检查与分析阶段 MUST 通过方法提升获得 `String()`，从而满足 `fmt.Stringer` 等依赖；展开后由 `DeriveStringerExpand` 生成 Target 自身的 `func (T) String() string` 并移除嵌入桩。
+
 宏主文件中 Target MUST 通过 **匿名嵌入** `derivestringer.DeriveStringer`（或等价 import 路径下的类型名）触发。`DeriveStringer` MUST NOT 要求类型实参。
+
+#### Scenario: 嵌入后类型检查具备 Stringer
+
+- **WHEN** `type Item struct { derivestringer.DeriveStringer; A string }` 且宏主文件经 `go/types` 分析
+- **THEN** `Item` MUST 实现 `fmt.Stringer`（经 `DeriveStringer.String` 提升），且文件中 MUST NOT 存在 `func (Item) String() string` 声明
 
 #### Scenario: 合法使用
 
@@ -23,21 +30,19 @@
 
 1. 从 `site.Target` 读取 struct 字段（不含已嵌入的 `DeriveStringer`）；
 2. 返回全量 `Fields`：原业务字段，**不含** `DeriveStringer` 嵌入；
-3. 返回全量 `Methods`：包含为 Target 生成的 `func (T) String() string { ... }`，以及 Target 在展开前已有的、receiver 为 `T` 的全部方法（若作者策略为保留）。
+3. 返回全量 `Methods`：Target 在展开前已有的、receiver 为 `T` 的全部 `*ast.FuncDecl` 方法；**仅当** Target 尚无自有 `String()` 时，追加生成的 `func (T) String() string { ... }`。自有 `String()` 包括：文件中 `func (T) String() string` 声明，或由**非** `DeriveStringer` 的嵌入类型提升而来的 `String()`（须用 `go/types` 方法集判定；仅由 marker 桩提升的 `String()` 不算自有）。
 
-`String()` 实现 MUST 使 `T` 满足 `fmt.Stringer`（由 syntax 文档描述字段拼接规则；框架不内置格式）。
-
-若 Target 在展开前已存在 `String()` 方法，Expander MUST 按 syntax 文档策略处理（默认 MUST 返回错误，冲突由宏作者在此 syntax 内规定）。
+生成的 `String()` 实现 MUST 使 `T` 满足 `fmt.Stringer`（由 syntax 文档描述字段拼接规则；框架不内置格式）。
 
 #### Scenario: 生成 String 并删桩
 
 - **WHEN** 对合法 `Item` 展开成功
 - **THEN** 结果 `Fields` MUST NOT 含 `DeriveStringer`，且 `Methods` MUST 含 `func (Item) String() string`
 
-#### Scenario: 已有 String 冲突
+#### Scenario: 已有 String 则保留用户实现
 
-- **WHEN** `Item` 已有 `func (Item) String() string` 且 `DeriveStringerExpand` 策略为冲突报错
-- **THEN** MUST 返回 error
+- **WHEN** `Item` 已有 `func (Item) String() string`，或经非 marker 嵌入提升得到 `String()`，且展开成功
+- **THEN** `Methods` MUST NOT 含新生成的 `func (Item) String() string`，`Fields` MUST NOT 含 `DeriveStringer`，且用户既有 `String()` 行为 MUST 保留
 
 ### Requirement: derive-stringer 作用域
 
