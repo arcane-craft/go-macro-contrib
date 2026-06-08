@@ -5,11 +5,13 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
 	"github.com/arcane-craft/go-macro/macro"
+	"github.com/arcane-craft/go-macro/macro/quote"
 )
 
-//macro: syntax-try
+// macro: syntax-try
 // TryExpand expands Try* macro calls into error-handling statement blocks.
 func TryExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResult, error) {
 	if len(call.Args) != 1 {
@@ -35,23 +37,11 @@ func TryExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResul
 		valIdents[i] = ctx.TempIdent("_v")
 	}
 
-	var assignLHS []ast.Expr
-	if k == 0 {
-		assignLHS = []ast.Expr{errIdent}
-	} else {
-		assignLHS = make([]ast.Expr, k+1)
-		for i := 0; i < k; i++ {
-			assignLHS[i] = valIdents[i]
-		}
-		assignLHS[k] = errIdent
+	tpl, args := tryQuoteTemplate(k, expr, errIdent, valIdents, outer)
+	stmts, err := quote.Stmts(tpl, args)
+	if err != nil {
+		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
 	}
-	assign := &ast.AssignStmt{
-		Tok: token.DEFINE,
-		Lhs: assignLHS,
-		Rhs: []ast.Expr{expr},
-	}
-	ifStmt := errorReturnIf(fset, errIdent, outer)
-	stmts := []ast.Stmt{assign, ifStmt}
 
 	switch ctx.Site() {
 	case macro.SiteAssign:
@@ -59,22 +49,28 @@ func TryExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResul
 		if !ok {
 			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected assignment context")
 		}
-		// After check, append success assignment to lhs
-		success := successAssign(assignStmt, valIdents, k)
-		stmts = append(stmts, success)
+		successTpl, successArgs, err := trySuccessAssignTemplate(assignStmt, valIdents, k)
+		if err != nil {
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
+		}
+		if successTpl != "" {
+			success, err := quote.Stmts(successTpl, successArgs)
+			if err != nil {
+				return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
+			}
+			stmts = append(stmts, success...)
+		}
 		return tryExpandResult(ctx, stmts), nil
 	case macro.SiteReturn:
 		if k == 0 {
-			// return Try0: only error check, success is fallthrough — replace with assign+if only
 			return tryExpandResult(ctx, stmts), nil
 		}
-		retVals := make([]ast.Expr, len(outer))
-		for i := 0; i < k; i++ {
-			retVals[i] = valIdents[i]
+		successTpl, successArgs := trySuccessReturnTemplate(k, valIdents)
+		success, err := quote.Stmts(successTpl, successArgs)
+		if err != nil {
+			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
 		}
-		retVals[len(outer)-1] = ast.NewIdent("nil")
-		successRet := &ast.ReturnStmt{Results: retVals}
-		stmts = append(stmts, successRet)
+		stmts = append(stmts, success...)
 		return tryExpandResult(ctx, stmts), nil
 	case macro.SiteStmt:
 		if k != 0 {
@@ -84,6 +80,108 @@ func TryExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResul
 	default:
 		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Try* not allowed in expression position")
 	}
+}
+
+func tryQuoteTemplate(k int, call ast.Expr, errIdent *ast.Ident, valIdents []*ast.Ident, outer []resultType) (string, map[string]any) {
+	args := map[string]any{
+		"err":  errIdent,
+		"call": call,
+	}
+	var b strings.Builder
+	if k == 0 {
+		b.WriteString("#err := #call")
+	} else {
+		for i := 0; i < k; i++ {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			key := fmt.Sprintf("v%d", i)
+			fmt.Fprintf(&b, "#%s", key)
+			args[key] = valIdents[i]
+		}
+		b.WriteString(", #err := #call")
+	}
+	b.WriteString("\nif #err != nil {\n    return ")
+	for i := 0; i < len(outer)-1; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		key := fmt.Sprintf("z%d", i)
+		fmt.Fprintf(&b, "#%s", key)
+		if len(outer[i].names) > 0 {
+			args[key] = outer[i].names[0].Name
+		} else {
+			args[key] = zeroValueExpr(outer[i].typ)
+		}
+	}
+	if len(outer) > 1 {
+		b.WriteString(", ")
+	}
+	b.WriteString("#err\n}")
+	return b.String(), args
+}
+
+func trySuccessReturnTemplate(k int, valIdents []*ast.Ident) (string, map[string]any) {
+	args := map[string]any{"nil": "nil"}
+	var b strings.Builder
+	b.WriteString("return ")
+	for i := 0; i < k; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		key := fmt.Sprintf("v%d", i)
+		fmt.Fprintf(&b, "#%s", key)
+		args[key] = valIdents[i]
+	}
+	if k > 0 {
+		b.WriteString(", ")
+	}
+	b.WriteString("#nil")
+	return b.String(), args
+}
+
+func trySuccessAssignTemplate(orig *ast.AssignStmt, vals []*ast.Ident, k int) (string, map[string]any, error) {
+	if k == 0 {
+		return "", nil, nil
+	}
+	tok := ":="
+	if orig.Tok.String() == "=" {
+		tok = "="
+	}
+	args := map[string]any{}
+	var lhs strings.Builder
+	nLHS := min(k, len(orig.Lhs))
+	if len(orig.Lhs) == 1 && k > 1 {
+		nLHS = 1
+		args["lhs0"] = orig.Lhs[0]
+		lhs.WriteString("#lhs0")
+	} else {
+		for i := 0; i < nLHS; i++ {
+			if i > 0 {
+				lhs.WriteString(", ")
+			}
+			key := fmt.Sprintf("lhs%d", i)
+			fmt.Fprintf(&lhs, "#%s", key)
+			args[key] = orig.Lhs[i]
+		}
+	}
+	var rhs strings.Builder
+	nRHS := k
+	if len(orig.Lhs) == 1 && k > 1 {
+		nRHS = k
+	} else {
+		nRHS = min(k, len(orig.Lhs))
+	}
+	for i := 0; i < nRHS; i++ {
+		if i > 0 {
+			rhs.WriteString(", ")
+		}
+		key := fmt.Sprintf("v%d", i)
+		fmt.Fprintf(&rhs, "#%s", key)
+		args[key] = vals[i]
+	}
+	tpl := fmt.Sprintf("%s %s %s", lhs.String(), tok, rhs.String())
+	return tpl, args, nil
 }
 
 func tryExpandResult(ctx macro.CallContext, stmts []ast.Stmt) macro.CallExpandResult {
@@ -154,7 +252,6 @@ func calleePayloadCount(ctx macro.CallContext, expr ast.Expr) (k int, err error)
 	if !ok {
 		return 0, fmt.Errorf("cannot type inner expression")
 	}
-	// Call or value typed as plain error (e.g. Try0(close()) where close returns error).
 	if isErrorType(tv.Type) {
 		return 0, nil
 	}
@@ -218,26 +315,6 @@ func checkStubMatchesK(stub string, k int) error {
 	return nil
 }
 
-func errorReturnIf(fset *token.FileSet, errIdent *ast.Ident, outer []resultType) *ast.IfStmt {
-	results := make([]ast.Expr, len(outer))
-	for i := 0; i < len(outer)-1; i++ {
-		if len(outer[i].names) > 0 {
-			results[i] = ast.NewIdent(outer[i].names[0].Name)
-		} else {
-			results[i] = zeroValueExpr(outer[i].typ)
-		}
-	}
-	results[len(outer)-1] = errIdent
-	return &ast.IfStmt{
-		Cond: &ast.BinaryExpr{
-			X:  errIdent,
-			Op: token.NEQ,
-			Y:  ast.NewIdent("nil"),
-		},
-		Body: &ast.BlockStmt{List: []ast.Stmt{&ast.ReturnStmt{Results: results}}},
-	}
-}
-
 func zeroValueExpr(t types.Type) ast.Expr {
 	switch u := t.Underlying().(type) {
 	case *types.Basic:
@@ -257,8 +334,6 @@ func zeroValueExpr(t types.Type) ast.Expr {
 
 func findAssignStmt(ctx macro.CallContext) (*ast.AssignStmt, bool) {
 	call := ctx.Call()
-	// Reconstruct assign from call position is done by expander before TryExpand;
-	// use Call's parent via Types isn't available — inspect EnclosingFunc body.
 	var found *ast.AssignStmt
 	switch fn := ctx.EnclosingFunc().(type) {
 	case *ast.FuncDecl:
@@ -287,32 +362,4 @@ func findAssignStmt(ctx macro.CallContext) (*ast.AssignStmt, bool) {
 		})
 	}
 	return found, found != nil
-}
-
-func successAssign(orig *ast.AssignStmt, vals []*ast.Ident, k int) ast.Stmt {
-	if k == 0 {
-		return &ast.EmptyStmt{}
-	}
-	lhs := orig.Lhs
-	if len(lhs) == 1 && k > 1 {
-		// multi-value lhs
-		return &ast.AssignStmt{Tok: orig.Tok, Lhs: lhs, Rhs: exprSlice(vals[:k])}
-	}
-	rhs := exprSlice(vals[:min(k, len(lhs))])
-	return &ast.AssignStmt{Tok: orig.Tok, Lhs: lhs, Rhs: rhs}
-}
-
-func exprSlice(ids []*ast.Ident) []ast.Expr {
-	out := make([]ast.Expr, len(ids))
-	for i, id := range ids {
-		out[i] = id
-	}
-	return out
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

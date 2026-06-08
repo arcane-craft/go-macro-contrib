@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/arcane-craft/go-macro/macro"
+	"github.com/arcane-craft/go-macro/macro/quote"
 )
 
 // DeriveStringer is a declaration macro marker. Embed anonymously in a struct.
@@ -43,32 +44,35 @@ func DeriveStringerExpand(ctx macro.DeclContext, site macro.DeclSite) (macro.Dec
 	methods := append([]*ast.FuncDecl{}, ctx.TargetMethods()...)
 	if shouldGenerateString(ctx, site) {
 		format := strings.Join(parts, ", ")
-		body := &ast.BlockStmt{
-			List: []ast.Stmt{
-				&ast.ReturnStmt{
-					Results: []ast.Expr{
-						&ast.CallExpr{
-							Fun: &ast.Ident{Name: "fmt.Sprintf"},
-							Args: append(
-								[]ast.Expr{&ast.BasicLit{Kind: token.STRING, Value: `"` + format + `"`}},
-								fieldSelectorExprs(target, fields)...,
-							),
-						},
-					},
-				},
-			},
-		}
-		methods = append(methods, &ast.FuncDecl{
-			Name: ast.NewIdent("String"),
-			Recv: &ast.FieldList{List: []*ast.Field{{Type: ast.NewIdent(target)}}},
-			Type: &ast.FuncType{
-				Params:  &ast.FieldList{},
-				Results: &ast.FieldList{List: []*ast.Field{{Type: ast.NewIdent("string")}}},
-			},
-			Body: body,
+		call := buildSprintfCall(format, fieldSelectorExprs(target, fields))
+		decls, err := quote.Decls(`func (#recv) String() string {
+	return #call
+}`, map[string]any{
+			"recv": target,
+			"call": call,
 		})
+		if err != nil {
+			return macro.DeclExpandResult{}, macro.ErrorAt(ctx.FileSet(), site.Target.Pos(), "%v", err)
+		}
+		if len(decls) != 1 {
+			return macro.DeclExpandResult{}, fmt.Errorf("derive-stringer: expected one method decl, got %d", len(decls))
+		}
+		fd, ok := decls[0].(*ast.FuncDecl)
+		if !ok {
+			return macro.DeclExpandResult{}, fmt.Errorf("derive-stringer: expected *ast.FuncDecl")
+		}
+		methods = append(methods, fd)
 	}
 	return macro.DeclExpandResult{Fields: fields, Methods: methods}, nil
+}
+
+func buildSprintfCall(format string, fieldExprs []ast.Expr) ast.Expr {
+	args := []ast.Expr{&ast.BasicLit{Kind: token.STRING, Value: `"` + format + `"`}}
+	args = append(args, fieldExprs...)
+	return &ast.CallExpr{
+		Fun:  &ast.Ident{Name: "fmt.Sprintf"},
+		Args: args,
+	}
 }
 
 // shouldGenerateString reports whether to synthesize func (T) String().
