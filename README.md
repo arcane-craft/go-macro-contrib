@@ -6,6 +6,7 @@
 |----|----------------|
 | `inline` | 把同文件里可内联的小函数展开进调用处 |
 | `try` | 把 `(T, error)` 等签名展开成带 `if err != nil` 的控制流 |
+| `with` | 在 `try` 式 error 处理基础上自动 `defer Close()`（`io.Closer`） |
 | `derive` | 为 struct 派生 `fmt.Stringer`（生成 `String()`） |
 | `wirejson` | 为 struct 字段补全 `json` tag |
 
@@ -153,6 +154,23 @@ go test ./...
 
 例如 `try.Try(os.Open(...))` 对应 `(*os.File, error)`；若是 `(A, B, error)`，应写 `try.Try2(...)`。
 
+### with — 获取资源并自动 defer Close
+
+`with` 将 `(T, error)` 获取（`T` 须为 `io.Closer`）展开为：`if err != nil` 错误传播 + `defer func() { _ = res.Close() }()` + 赋值。不含块级语法；函数体其余语句由你照常编写。
+
+| 桩 | 典型 callee 签名 |
+|----|------------------|
+| `With` | `(T, error)`，且 `T` 实现 `io.Closer` |
+
+```go
+f := with.With(os.Open(path))
+return io.ReadAll(f)
+```
+
+**与 `try` 如何选：** 需要自动 `Close` 时用 `with.With`；不需清理或自行 `defer` 时用 `try.Try`。宏主文件须 `import "io"`（桩泛型约束 `io.Closer`）。
+
+`With` 须在赋值或 `return` 语境使用；v1 仅支持单载荷 `(T, error)`。
+
 ### derive — 派生 fmt.Stringer
 
 在 struct 中**匿名嵌入** `derive.Derive[fmt.Stringer]`（需 `import "fmt"`）。marker 自带桩 `String()`（经提升供宏主文件类型检查）；展开后移除嵌入桩，并在 Target 尚无自有 `String()` 时生成字段拼接版 `String()`。若已手写 `func (T) String() string`，或由其它嵌入类型提升得到 `String()`，则不再生成，保留用户实现。
@@ -180,6 +198,7 @@ go test ./...
 |----|-----------|--------|
 | inline | `syntax-inline` | `github.com/arcane-craft/go-macro-contrib/inline` |
 | try | `syntax-try` | `github.com/arcane-craft/go-macro-contrib/try` |
+| with | `syntax-with` | `github.com/arcane-craft/go-macro-contrib/with` |
 | derive | `derive` | `github.com/arcane-craft/go-macro-contrib/derive` |
 | wirejson | `wire-json` | `github.com/arcane-craft/go-macro-contrib/wirejson` |
 
