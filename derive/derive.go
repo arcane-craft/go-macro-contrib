@@ -1,8 +1,9 @@
-package derivestringer
+package derive
 
 import (
 	"fmt"
 	"go/ast"
+	"go/importer"
 	"go/token"
 	"go/types"
 	"strings"
@@ -11,24 +12,27 @@ import (
 	"github.com/arcane-craft/go-macro/macro/quote"
 )
 
-// DeriveStringer is a declaration macro marker. Embed anonymously in a struct.
+// Derive is a declaration macro marker. Embed Derive[fmt.Stringer] anonymously in a struct.
 //
-//macro: derive-stringer
-type DeriveStringer struct{}
+//macro: derive
+type Derive[T any] struct{}
 
 // String is a type-check stub promoted to embedders before expand. Do not call at runtime.
-func (DeriveStringer) String() string {
-	panic("DeriveStringer.String is a macro stub and must not be called at runtime")
+func (Derive[T]) String() string {
+	panic("Derive.String is a macro stub and must not be called at runtime")
 }
 
-//macro: derive-stringer
+//macro: derive
 
-// DeriveStringerExpand removes the embed and generates String() unless Target already has one.
-func DeriveStringerExpand(ctx macro.DeclContext, site macro.DeclSite) (macro.DeclExpandResult, error) {
+// DeriveExpand removes the embed and generates String() unless Target already has one.
+func DeriveExpand(ctx macro.DeclContext, site macro.DeclSite) (macro.DeclExpandResult, error) {
+	if err := validateStringerTypeArg(ctx, site); err != nil {
+		return macro.DeclExpandResult{}, err
+	}
 	target := site.Target.Name.Name
 	st, ok := site.Target.Type.(*ast.StructType)
 	if !ok || st.Fields == nil {
-		return macro.DeclExpandResult{}, fmt.Errorf("derive-stringer: target is not a struct")
+		return macro.DeclExpandResult{}, fmt.Errorf("derive: target is not a struct")
 	}
 	var fields []*ast.Field
 	var parts []string
@@ -55,15 +59,48 @@ func DeriveStringerExpand(ctx macro.DeclContext, site macro.DeclSite) (macro.Dec
 			return macro.DeclExpandResult{}, macro.ErrorAt(ctx.FileSet(), site.Target.Pos(), "%v", err)
 		}
 		if len(decls) != 1 {
-			return macro.DeclExpandResult{}, fmt.Errorf("derive-stringer: expected one method decl, got %d", len(decls))
+			return macro.DeclExpandResult{}, fmt.Errorf("derive: expected one method decl, got %d", len(decls))
 		}
 		fd, ok := decls[0].(*ast.FuncDecl)
 		if !ok {
-			return macro.DeclExpandResult{}, fmt.Errorf("derive-stringer: expected *ast.FuncDecl")
+			return macro.DeclExpandResult{}, fmt.Errorf("derive: expected *ast.FuncDecl")
 		}
 		methods = append(methods, fd)
 	}
 	return macro.DeclExpandResult{Fields: fields, Methods: methods}, nil
+}
+
+func validateStringerTypeArg(ctx macro.DeclContext, site macro.DeclSite) error {
+	if len(site.MarkerTypeArgs) != 1 {
+		return fmt.Errorf("derive: type argument must be fmt.Stringer")
+	}
+	want := fmtStringerType(ctx)
+	if want == nil {
+		return fmt.Errorf("derive: cannot resolve fmt.Stringer")
+	}
+	if !types.Identical(site.MarkerTypeArgs[0], want) {
+		return fmt.Errorf("derive: type argument must be fmt.Stringer")
+	}
+	return nil
+}
+
+func fmtStringerType(ctx macro.DeclContext) types.Type {
+	for _, imp := range ctx.Package().Imports() {
+		if imp.Path() != "fmt" {
+			continue
+		}
+		if obj := imp.Scope().Lookup("Stringer"); obj != nil {
+			return obj.Type()
+		}
+	}
+	pkg, err := importer.Default().Import("fmt")
+	if err != nil {
+		return nil
+	}
+	if obj := pkg.Scope().Lookup("Stringer"); obj != nil {
+		return obj.Type()
+	}
+	return nil
 }
 
 func buildSprintfCall(format string, fieldExprs []ast.Expr) ast.Expr {
@@ -83,15 +120,44 @@ func shouldGenerateString(ctx macro.DeclContext, site macro.DeclSite) bool {
 			return false
 		}
 	}
+	if otherEmbedPromotesString(ctx, site) {
+		return false
+	}
 	typ := targetNamedType(ctx, site.Target)
 	if typ == nil {
 		return true
 	}
-	sel := types.NewMethodSet(types.NewPointer(typ)).Lookup(nil, "String")
-	if sel == nil {
-		return true
+	ms := types.NewMethodSet(types.NewPointer(typ))
+	for i := 0; i < ms.Len(); i++ {
+		sel := ms.At(i)
+		if sel.Obj().Name() != "String" {
+			continue
+		}
+		if !stringSelectionIsDeriveStub(site, sel) {
+			return false
+		}
 	}
-	return stringSelectionIsDeriveStringerStub(site, sel)
+	return true
+}
+
+func otherEmbedPromotesString(ctx macro.DeclContext, site macro.DeclSite) bool {
+	st, ok := site.Target.Type.(*ast.StructType)
+	if !ok || st.Fields == nil {
+		return false
+	}
+	for i, f := range st.Fields.List {
+		if len(f.Names) > 0 || i == site.EmbedIndex {
+			continue
+		}
+		typ := ctx.Types().TypeOf(f.Type)
+		if typ == nil {
+			continue
+		}
+		if types.NewMethodSet(types.NewPointer(typ)).Lookup(nil, "String") != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func targetNamedType(ctx macro.DeclContext, target *ast.TypeSpec) types.Type {
@@ -106,7 +172,7 @@ func targetNamedType(ctx macro.DeclContext, target *ast.TypeSpec) types.Type {
 	return tn.Type()
 }
 
-func stringSelectionIsDeriveStringerStub(site macro.DeclSite, sel *types.Selection) bool {
+func stringSelectionIsDeriveStub(site macro.DeclSite, sel *types.Selection) bool {
 	if sel.Kind() != types.MethodVal {
 		return false
 	}

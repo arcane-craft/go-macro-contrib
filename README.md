@@ -6,7 +6,7 @@
 |----|----------------|
 | `inline` | 把同文件里可内联的小函数展开进调用处 |
 | `try` | 把 `(T, error)` 等签名展开成带 `if err != nil` 的控制流 |
-| `derivestringer` | 为 struct 生成 `String()` |
+| `derive` | 为 struct 派生 `fmt.Stringer`（生成 `String()`） |
 | `wirejson` | 为 struct 字段补全 `json` tag |
 
 ---
@@ -25,7 +25,7 @@
 
 ## 5 分钟上手
 
-下面用 `inline` 走通一遍：**安装 → 写宏主文件 → 展开 → 日常构建**。若你用的是 `try`、`derivestringer` 或 `wirejson`，步骤相同，只需换掉 import 与宏调用（写法见 [宏参考](#宏参考)）。
+下面用 `inline` 走通一遍：**安装 → 写宏主文件 → 展开 → 日常构建**。若你用的是 `try`、`derive` 或 `wirejson`，步骤相同，只需换掉 import 与宏调用（写法见 [宏参考](#宏参考)）。
 
 ### 你需要什么
 
@@ -153,9 +153,18 @@ go test ./...
 
 例如 `try.Try(os.Open(...))` 对应 `(*os.File, error)`；若是 `(A, B, error)`，应写 `try.Try2(...)`。
 
-### derivestringer — 生成 String()
+### derive — 派生 fmt.Stringer
 
-在 struct 中**匿名嵌入** `derivestringer.DeriveStringer`。marker 自带桩 `String()`（经提升供宏主文件类型检查）；展开后移除嵌入桩，并在 Target 尚无自有 `String()` 时生成字段拼接版 `String()`。若已手写 `func (T) String() string`，或由其它嵌入类型提升得到 `String()`，则不再生成，保留用户实现。
+在 struct 中**匿名嵌入** `derive.Derive[fmt.Stringer]`（需 `import "fmt"`）。marker 自带桩 `String()`（经提升供宏主文件类型检查）；展开后移除嵌入桩，并在 Target 尚无自有 `String()` 时生成字段拼接版 `String()`。若已手写 `func (T) String() string`，或由其它嵌入类型提升得到 `String()`，则不再生成，保留用户实现。
+
+**自 `derivestringer` 迁移：**
+
+| 旧 | 新 |
+|----|-----|
+| `.../derivestringer` | `.../derive` |
+| `DeriveStringer` | `Derive[fmt.Stringer]` |
+| `derive-stringer` | `derive` |
+| `DeriveStringerExpand` | `DeriveExpand` |
 
 ### wirejson — 补全 json tag
 
@@ -171,10 +180,10 @@ go test ./...
 |----|-----------|--------|
 | inline | `syntax-inline` | `github.com/arcane-craft/go-macro-contrib/inline` |
 | try | `syntax-try` | `github.com/arcane-craft/go-macro-contrib/try` |
-| derivestringer | `derive-stringer` | `github.com/arcane-craft/go-macro-contrib/derivestringer` |
+| derive | `derive` | `github.com/arcane-craft/go-macro-contrib/derive` |
 | wirejson | `wire-json` | `github.com/arcane-craft/go-macro-contrib/wirejson` |
 
-`derivestringer` / `wirejson` 需要带 Decl 宏能力的 go-macro；本地联调时请 `replace` 到含该能力的 `../go-macro`。
+`derive` / `wirejson` 需要带 Decl 宏能力的 go-macro；本地联调时请 `replace` 到含该能力的 `../go-macro`。
 
 ### 与 go-macro 并列联调
 
