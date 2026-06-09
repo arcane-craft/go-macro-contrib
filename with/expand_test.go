@@ -11,7 +11,7 @@ import (
 )
 
 func TestWithExpandAssign(t *testing.T) {
-	result, err := mactest.ExpandCall(with.WithExpand, "With", "syntax-with", `
+	result, err := mactest.ExpandCall(with.WithExpand, "With", "with", `
 import "io"
 func With[T io.Closer](v T, err error) T { panic("stub") }
 type resource struct{}
@@ -49,7 +49,7 @@ func f() ([]byte, error) {
 }
 
 func TestWithExpandReturn(t *testing.T) {
-	result, err := mactest.ExpandCall(with.WithExpand, "With", "syntax-with", `
+	result, err := mactest.ExpandCall(with.WithExpand, "With", "with", `
 import "io"
 func With[T io.Closer](v T, err error) (T, error) { panic("stub") }
 type resource struct{}
@@ -78,7 +78,7 @@ func f() (resource, error) {
 }
 
 func TestWithExpandNamedReturn(t *testing.T) {
-	result, err := mactest.ExpandCall(with.WithExpand, "With", "syntax-with", `
+	result, err := mactest.ExpandCall(with.WithExpand, "With", "with", `
 import "io"
 func With[T io.Closer](v T, err error) T { panic("stub") }
 type resource struct{}
@@ -100,7 +100,7 @@ func f() (r resource, err error) {
 }
 
 func TestWithExpandRejectNoErrorReturn(t *testing.T) {
-	_, err := mactest.ExpandCall(with.WithExpand, "With", "syntax-with", `
+	_, err := mactest.ExpandCall(with.WithExpand, "With", "with", `
 import "io"
 func With[T io.Closer](v T, err error) T { panic("stub") }
 type resource struct{}

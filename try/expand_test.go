@@ -11,7 +11,7 @@ import (
 )
 
 func TestTryExpandAssignInlinesCallee(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try", "syntax-try", `
+	result, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (int, error) { return 0, nil }
 func f() (int, error) {
@@ -61,7 +61,7 @@ func f() (int, error) {
 }
 
 func TestTryExpandReturnReplacesWithErrorHandling(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try", "syntax-try", `
+	result, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
 func Try[T any](v T, err error) (T, error) { panic("stub") }
 func helper() (int, error) { return 1, nil }
 func f() (int, error) {
@@ -87,7 +87,7 @@ func f() (int, error) {
 }
 
 func TestTry0ExpandStmtSite(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try0", "syntax-try", `
+	result, err := mactest.ExpandCall(try.TryExpand, "Try0", "try", `
 func Try0(err error) { panic("stub") }
 func closer() error { return nil }
 func f() error {
@@ -111,7 +111,7 @@ func f() error {
 }
 
 func TestTry2ExpandAssign(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try2", "syntax-try", `
+	result, err := mactest.ExpandCall(try.TryExpand, "Try2", "try", `
 func Try2[A, B any](a A, b B, err error) (A, B) { panic("stub") }
 func pair() (int, string, error) { return 0, "", nil }
 func f() (int, string, error) {
@@ -137,7 +137,7 @@ func f() (int, string, error) {
 }
 
 func TestTryExpandNamedReturnUsesStringZero(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try", "syntax-try", `
+	result, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (string, error) { return "", nil }
 func f() (msg string, err error) {
@@ -156,7 +156,7 @@ func f() (msg string, err error) {
 }
 
 func TestTryExpandRejectNoErrorReturn(t *testing.T) {
-	_, err := mactest.ExpandCall(try.TryExpand, "Try", "syntax-try", `
+	_, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (int, error) { return 0, nil }
 func f() int {
@@ -170,7 +170,7 @@ func f() int {
 }
 
 func TestTryExpandRejectExprSite(t *testing.T) {
-	_, err := mactest.ExpandCall(try.TryExpand, "Try", "syntax-try", `
+	_, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (int, error) { return 0, nil }
 func f() (int, error) {

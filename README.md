@@ -196,9 +196,9 @@ return io.ReadAll(f)
 
 | 包 | syntax-id | import |
 |----|-----------|--------|
-| inline | `syntax-inline` | `github.com/arcane-craft/go-macro-contrib/inline` |
-| try | `syntax-try` | `github.com/arcane-craft/go-macro-contrib/try` |
-| with | `syntax-with` | `github.com/arcane-craft/go-macro-contrib/with` |
+| inline | `inline` | `github.com/arcane-craft/go-macro-contrib/inline` |
+| try | `try` | `github.com/arcane-craft/go-macro-contrib/try` |
+| with | `with` | `github.com/arcane-craft/go-macro-contrib/with` |
 | derive | `derive` | `github.com/arcane-craft/go-macro-contrib/derive` |
 | wirejson | `wire-json` | `github.com/arcane-craft/go-macro-contrib/wirejson` |
 

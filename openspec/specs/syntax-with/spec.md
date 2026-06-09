@@ -5,7 +5,7 @@ TBD - created by archiving change add-with-macro. Update Purpose after archive.
 ## Requirements
 ### Requirement: With 语法桩
 
-`with` 包 MUST 提供单一语法桩 `With[T io.Closer](v T, err error) T`。函数体 MUST panic，并注明勿在未展开时调用。桩 MUST 带 `//macro: syntax-with` 并映射到 `WithExpand`。
+`with` 包 MUST 提供单一语法桩 `With[T io.Closer](v T, err error) T`。函数体 MUST panic，并注明勿在未展开时调用。桩 MUST 带 `//macro: with` 并映射到 `WithExpand`。
 
 v1 MUST NOT 提供 `With0`、`With2`、`With3` 等多桩；callee 载荷数 k MUST 为 1（即 `(T, error)`）。
 
@@ -26,7 +26,7 @@ v1 MUST NOT 提供 `With0`、`With2`、`With3` 等多桩；callee 载荷数 k MU
 #### Scenario: 未 import 时不展开
 
 - **WHEN** 宏主文件使用 `With(...)` 但未 import `github.com/arcane-craft/go-macro-contrib/with`
-- **THEN** 展开管线 MUST NOT 注册 `syntax-with`
+- **THEN** 展开管线 MUST NOT 注册 `with`
 
 #### Scenario: import 但未 link 时不展开
 
@@ -123,7 +123,7 @@ v1 MUST NOT 提供 `With0`、`With2`、`With3` 等多桩；callee 载荷数 k MU
 
 ### Requirement: 具名返回支持
 
-错误路径上的 `return` MUST 优先使用外层具名标识符（若存在）；无具名时 MUST 使用与外层签名一致的零值与 `err` 变量。行为 MUST 与 `syntax-try` 的具名返回规则一致。
+错误路径上的 `return` MUST 优先使用外层具名标识符（若存在）；无具名时 MUST 使用与外层签名一致的零值与 `err` 变量。行为 MUST 与 `try` 的具名返回规则一致。
 
 #### Scenario: 具名 error
 

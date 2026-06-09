@@ -11,7 +11,7 @@ import (
 	"github.com/arcane-craft/go-macro/macro/quote"
 )
 
-//macro: syntax-with
+//macro: with
 // WithExpand expands With macro calls into error handling plus defer Close.
 func WithExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResult, error) {
 	if len(call.Args) != 1 {

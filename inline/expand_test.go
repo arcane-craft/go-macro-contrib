@@ -10,7 +10,7 @@ import (
 )
 
 func TestInlineExpandExprUnwrapsArgument(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "syntax-inline", `
+	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func f() int {
 	return 1 + Inline(2)
@@ -26,7 +26,7 @@ func f() int {
 }
 
 func TestInlineExpandInlinesLocalCall(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "syntax-inline", `
+	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func add(a, b int) int { return a + b }
 func f() int { return Inline(add(1, 2)) }
@@ -56,7 +56,7 @@ func f() int { return Inline(add(1, 2)) }
 }
 
 func TestInlineExpandRejectsNonInlineableCallee(t *testing.T) {
-	_, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "syntax-inline", `
+	_, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func g() int { x := 3; return x }
 func f() int { return Inline(g()) }
@@ -67,7 +67,7 @@ func f() int { return Inline(g()) }
 }
 
 func TestInlineExpandRejectAssign(t *testing.T) {
-	_, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "syntax-inline", `
+	_, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func f() int {
 	x := Inline(1)
@@ -80,7 +80,7 @@ func f() int {
 }
 
 func TestInline2ExpandAssignSite(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline2", "syntax-inline", `
+	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline2", "inline", `
 func Inline2[A, B any](a A, b B) (A, B) { panic("stub") }
 func split() (string, string) { return "a", "b" }
 func f() (string, string) {
@@ -109,7 +109,7 @@ func f() (string, string) {
 }
 
 func TestInline0ExpandStmtSite(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline0", "syntax-inline", `
+	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline0", "inline", `
 func Inline0(f func()) { panic("stub") }
 func cleanup() { _ = 1 }
 func f() {

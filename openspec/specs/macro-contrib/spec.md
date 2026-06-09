@@ -26,9 +26,9 @@
 
 | 包目录 | syntax-id（典型） | import |
 |--------|-------------------|--------|
-| `inline` | `syntax-inline` | `github.com/arcane-craft/go-macro-contrib/inline` |
-| `try` | `syntax-try` | `github.com/arcane-craft/go-macro-contrib/try` |
-| `with` | `syntax-with` | `github.com/arcane-craft/go-macro-contrib/with` |
+| `inline` | `inline` | `github.com/arcane-craft/go-macro-contrib/inline` |
+| `try` | `try` | `github.com/arcane-craft/go-macro-contrib/try` |
+| `with` | `with` | `github.com/arcane-craft/go-macro-contrib/with` |
 | `derive` | `derive` | `github.com/arcane-craft/go-macro-contrib/derive` |
 | `wirejson` | `wire-json` | `github.com/arcane-craft/go-macro-contrib/wirejson` |
 
@@ -91,7 +91,7 @@ README **MUST** 注明最低兼容核心版本，且所述版本 **MUST** 与 `g
 
 ### Requirement: Call 与 Decl Expander 可选用 macro/quote
 
-`try`、`with` 与 `derive` 包的 Expander 实现 **MAY** 使用 `github.com/arcane-craft/go-macro/macro/quote` 进行模板化 AST 组装。该选用 **MUST NOT** 改变 `syntax-try`、`syntax-with` 或 `syntax-derive` 已定义的展开语义、`mactest` 可观测结果或公开桩 API。
+`try`、`with` 与 `derive` 包的 Expander 实现 **MAY** 使用 `github.com/arcane-craft/go-macro/macro/quote` 进行模板化 AST 组装。该选用 **MUST NOT** 改变 `try`、`with` 或 `syntax-derive` 已定义的展开语义、`mactest` 可观测结果或公开桩 API。
 
 使用 `macro/quote` 的 Call Expander **MUST** 在返回 `CallExpandResult` 前对语句结果调用 `macro.StampStmtPos(ctx.MacroPos(), stmts)`（与手写 AST 相同）。Quote **MUST NOT** 代替 Expander 设置 `SpliceTarget`。
 

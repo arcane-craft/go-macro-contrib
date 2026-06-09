@@ -1,9 +1,5 @@
-# syntax-inline Specification
+## MODIFIED Requirements
 
-## Purpose
-
-定义官方 `inline` 宏库的语法桩、`InlineExpand` 展开语义、import/link 约定及 mactest 要求。
-## Requirements
 ### Requirement: Inline 语法桩
 
 `inline` 包 MUST 提供下列语法桩，函数体 MUST panic，并标注为宏桩不可直接调用；均 MUST 带 `//macro: inline` 并映射到同一 `InlineExpand`：
@@ -103,18 +99,3 @@
 
 - **WHEN** 注册表构建完成
 - **THEN** 各 `Inline*` 桩 MUST 映射到 `inline` 的 `InlineExpand`，且 MUST NOT 与 `try` 共用展开器
-
-### Requirement: mactest 单测
-
-`InlineExpand` MUST 具备不依赖 `//go:build macro` 的 `mactest.ExpandCall` 单测，测试包路径 MUST 为 `go-macro-contrib` 仓库内的 `inline`（或 `inline_test`）。测试 MUST 覆盖：`Inline` 单值内联与 unwrap、`Inline2` 在 `SiteAssign` 的内联、`Inline0` 在 `SiteStmt` 的内联（`func()` 包装）、桩与 `n` 不匹配错误、不可内联函数体错误。
-
-#### Scenario: 纯 Expand 测试
-
-- **WHEN** 在 `go-macro-contrib` 仓库内执行 `go test ./inline/...`
-- **THEN** 测试 MUST 无需全链路 expand 即可通过
-
-#### Scenario: Inline2 与 Inline 区分
-
-- **WHEN** 测试对双返回值 callee 校验 `checkStubMatchesN("Inline", 2)`
-- **THEN** MUST 断言失败并提示 `Inline2`
-

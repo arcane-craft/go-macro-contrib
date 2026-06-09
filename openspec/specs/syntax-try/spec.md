@@ -3,11 +3,10 @@
 ## Purpose
 
 定义官方 `try` 宏库的 Try 桩族、`TryExpand` 展开语义、载荷校验、Site 约束及 mactest 要求。
-
 ## Requirements
 ### Requirement: Try 语法桩族
 
-`try` 包 MUST 提供按「error 前载荷个数」划分的多个语法桩，均 MUST panic，并共享同一 `TryExpand`（`//macro: syntax-try`）。不得仅提供单一 `func Try[T any](T, error) T` 作为唯一桩。
+`try` 包 MUST 提供按「error 前载荷个数」划分的多个语法桩，均 MUST panic，并共享同一 `TryExpand`（`//macro: try`）。不得仅提供单一 `func Try[T any](T, error) T` 作为唯一桩。
 
 | 桩名 | 签名（概念） | callee 载荷数 k |
 |------|--------------|-----------------|
@@ -44,7 +43,7 @@
 #### Scenario: 未 import 时不展开
 
 - **WHEN** 宏主文件使用 `Try(...)` 但未 import `github.com/arcane-craft/go-macro-contrib/try`
-- **THEN** 展开管线 MUST NOT 注册 `syntax-try`
+- **THEN** 展开管线 MUST NOT 注册 `try`
 
 #### Scenario: import 但未 link 时不展开
 
@@ -53,7 +52,7 @@
 
 ### Requirement: 多桩名注册到同一展开器
 
-注册表 MUST 将 `Try0`, `Try`, `Try2`, `Try3`（及已实现的 `Try4`）的调用均映射到 `syntax-try` 的 `TryExpand`。
+注册表 MUST 将 `Try0`, `Try`, `Try2`, `Try3`（及已实现的 `Try4`）的调用均映射到 `try` 的 `TryExpand`。
 
 #### Scenario: Try2 调用分发
 
@@ -101,7 +100,7 @@
 
 在 `SiteAssign`、`SiteReturn`、`SiteStmt` 语境，`TryExpand` MUST 设置显式 `CallExpandResult.Target`（分别为 `SpliceReplaceAssignStmt`、`SpliceReplaceReturnStmt`、`SpliceReplaceExprStmt`）并返回非空 `Stmts`。在 `SiteReturn` **MUST NOT** 使用 `Target: SpliceReplaceReturnResults` 或仅设置 `Exprs`。
 
-本要求属于 **syntax-try provider**；框架按 `CallExpandResult.Target` 贴回 AST（见 `go-macro` `macro-expander` 规范）。
+本要求属于 **try provider**；框架按 `CallExpandResult.Target` 贴回 AST（见 `go-macro` `macro-expander` 规范）。
 
 #### Scenario: SiteReturn 禁止 Exprs
 
@@ -149,3 +148,4 @@
 
 - **WHEN** callee 为 `(A, B, error)` 但用户调用 `Try(f())`
 - **THEN** `TryExpand` MUST 返回错误，且错误信息 MUST 建议使用 `Try2`
+

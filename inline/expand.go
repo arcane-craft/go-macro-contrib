@@ -8,7 +8,7 @@ import (
 	"github.com/arcane-craft/go-macro/macro"
 )
 
-//macro: syntax-inline
+//macro: inline
 // InlineExpand inlines resolvable same-file function calls or unwraps Inline(expr) at SiteExpr.
 func InlineExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResult, error) {
 	fset := ctx.FileSet()

@@ -11,7 +11,7 @@ import (
 	"github.com/arcane-craft/go-macro/macro/quote"
 )
 
-// macro: syntax-try
+//macro: try
 // TryExpand expands Try* macro calls into error-handling statement blocks.
 func TryExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResult, error) {
 	if len(call.Args) != 1 {
