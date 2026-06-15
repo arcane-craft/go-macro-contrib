@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arcane-craft/go-macro-contrib/inline"
 	"github.com/arcane-craft/go-macro/macro/mactest"
+	"github.com/arcane-craft/go-macro-contrib/inline"
 )
 
 func TestInlineExpandExprUnwrapsArgument(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
+	out, err := mactest.ExpandSyntax(inline.InlineExpander, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func f() int {
 	return 1 + Inline(2)
@@ -19,14 +19,18 @@ func f() int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lit, ok := result.Expr.(*ast.BasicLit)
+	expr, err := out.ToExpr()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lit, ok := expr.(*ast.BasicLit)
 	if !ok || lit.Value != "2" {
-		t.Fatalf("want literal 2, got %#v", result.Expr)
+		t.Fatalf("want literal 2, got %#v", expr)
 	}
 }
 
 func TestInlineExpandInlinesLocalCall(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
+	out, err := mactest.ExpandSyntax(inline.InlineExpander, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func add(a, b int) int { return a + b }
 func f() int { return Inline(add(1, 2)) }
@@ -34,12 +38,16 @@ func f() int { return Inline(add(1, 2)) }
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Stmts) != 1 {
-		t.Fatalf("want 1 return stmt, got expr=%#v stmts=%d", result.Expr, len(result.Stmts))
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
 	}
-	ret, ok := result.Stmts[0].(*ast.ReturnStmt)
+	if len(stmts) != 1 {
+		t.Fatalf("want 1 return stmt, got %d stmts", len(stmts))
+	}
+	ret, ok := stmts[0].(*ast.ReturnStmt)
 	if !ok || len(ret.Results) != 1 {
-		t.Fatalf("want return, got %#v", result.Stmts[0])
+		t.Fatalf("want return, got %#v", stmts[0])
 	}
 	be, ok := ret.Results[0].(*ast.BinaryExpr)
 	if !ok {
@@ -56,7 +64,7 @@ func f() int { return Inline(add(1, 2)) }
 }
 
 func TestInlineExpandRejectsNonInlineableCallee(t *testing.T) {
-	_, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
+	_, err := mactest.ExpandSyntax(inline.InlineExpander, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func g() int { x := 3; return x }
 func f() int { return Inline(g()) }
@@ -67,7 +75,7 @@ func f() int { return Inline(g()) }
 }
 
 func TestInlineExpandRejectAssign(t *testing.T) {
-	_, err := mactest.ExpandCall(inline.InlineExpand, "Inline", "inline", `
+	_, err := mactest.ExpandSyntax(inline.InlineExpander, "Inline", "inline", `
 func Inline[T any](v T) T { panic("stub") }
 func f() int {
 	x := Inline(1)
@@ -80,7 +88,7 @@ func f() int {
 }
 
 func TestInline2ExpandAssignSite(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline2", "inline", `
+	out, err := mactest.ExpandSyntax(inline.InlineExpander, "Inline2", "inline", `
 func Inline2[A, B any](a A, b B) (A, B) { panic("stub") }
 func split() (string, string) { return "a", "b" }
 func f() (string, string) {
@@ -91,12 +99,16 @@ func f() (string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Stmts) != 1 {
-		t.Fatalf("want 1 stmt, got %d", len(result.Stmts))
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
 	}
-	assign, ok := result.Stmts[0].(*ast.AssignStmt)
+	if len(stmts) != 1 {
+		t.Fatalf("want 1 stmt, got %d", len(stmts))
+	}
+	assign, ok := stmts[0].(*ast.AssignStmt)
 	if !ok || len(assign.Lhs) != 2 || len(assign.Rhs) != 2 {
-		t.Fatalf("assign: %#v", result.Stmts[0])
+		t.Fatalf("assign: %#v", stmts[0])
 	}
 	lit0, ok := assign.Rhs[0].(*ast.BasicLit)
 	if !ok || lit0.Value != `"a"` {
@@ -109,7 +121,7 @@ func f() (string, string) {
 }
 
 func TestInline0ExpandStmtSite(t *testing.T) {
-	result, err := mactest.ExpandCall(inline.InlineExpand, "Inline0", "inline", `
+	out, err := mactest.ExpandSyntax(inline.InlineExpander, "Inline0", "inline", `
 func Inline0(f func()) { panic("stub") }
 func cleanup() { _ = 1 }
 func f() {
@@ -119,16 +131,19 @@ func f() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Stmts) != 1 {
-		t.Fatalf("want 1 stmt, got %d", len(result.Stmts))
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
 	}
-	assign, ok := result.Stmts[0].(*ast.AssignStmt)
+	if len(stmts) != 1 {
+		t.Fatalf("want 1 stmt, got %d", len(stmts))
+	}
+	assign, ok := stmts[0].(*ast.AssignStmt)
 	if !ok {
-		t.Fatalf("want assign stmt, got %T", result.Stmts[0])
+		t.Fatalf("want assign stmt, got %T", stmts[0])
 	}
 	lit, ok := assign.Rhs[0].(*ast.BasicLit)
 	if !ok || lit.Value != "1" {
 		t.Fatalf("inlined body rhs: %#v", assign.Rhs[0])
 	}
 }
-

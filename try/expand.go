@@ -8,84 +8,133 @@ import (
 	"strings"
 
 	"github.com/arcane-craft/go-macro/macro"
-	"github.com/arcane-craft/go-macro/macro/quote"
 )
 
 //macro: try
-// TryExpand expands Try* macro calls into error-handling statement blocks.
-func TryExpand(ctx macro.CallContext, call *ast.CallExpr) (macro.CallExpandResult, error) {
+// TryExpander expands Try* macro calls into error-handling statement blocks.
+var TryExpander = macro.SyntaxCase(buildTryClauses()...)
+
+func buildTryClauses() []macro.Clause {
+	stubs := []string{"Try0", "Try", "Try2", "Try3"}
+	patterns := []string{
+		`$lhs ... := %s($inner)`,
+		`$lhs ... = %s($inner)`,
+		`var $lhs ... = %s($inner)`,
+		`return $vals ... , %s($inner)`,
+	}
+	var clauses []macro.Clause
+	for _, stub := range stubs {
+		for _, pat := range patterns {
+			clauses = append(clauses, macro.Clause{
+				Pattern:   fmt.Sprintf(pat, stub),
+				Transform: tryTransform,
+			})
+		}
+		if stub == "Try0" {
+			clauses = append(clauses, macro.Clause{
+				Pattern:   `Try0($inner);`,
+				Transform: tryTransform,
+			})
+		}
+	}
+	return clauses
+}
+
+func tryTransform(ctx macro.Context, site macro.Syntax, binds macro.Bindings) (macro.Syntax, error) {
+	call, ok := site.Underlying().(*ast.CallExpr)
+	if !ok {
+		return nil, fmt.Errorf("expected call site")
+	}
 	if len(call.Args) != 1 {
-		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "Try* expects one argument expression")
+		return nil, fmt.Errorf("Try* expects one argument expression")
 	}
-	outer, err := outerResults(ctx)
-	if err != nil {
-		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
+	inner, ok := binds.Get("inner")
+	if !ok {
+		return nil, fmt.Errorf("missing inner binding")
 	}
-	k, err := calleePayloadCount(ctx, call.Args[0])
-	if err != nil {
-		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
-	}
-	if err := checkStubMatchesK(ctx.StubName(), k); err != nil {
-		return macro.CallExpandResult{}, macro.ErrorAt(ctx.FileSet(), ctx.MacroPos(), "%s", err.Error())
+	innerExpr, ok := inner.Underlying().(ast.Expr)
+	if !ok {
+		return nil, fmt.Errorf("inner is not an expression")
 	}
 
-	fset := ctx.FileSet()
-	expr := call.Args[0]
+	stubName := invokedName(call.Fun)
+	outer, err := enclosingOuterResults(ctx, site)
+	if err != nil {
+		return nil, err
+	}
+	k, err := calleePayloadCount(ctx, innerExpr)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkStubMatchesK(stubName, k); err != nil {
+		return nil, err
+	}
+
 	errIdent := ctx.TempIdent("_err")
 	valIdents := make([]*ast.Ident, k)
 	for i := 0; i < k; i++ {
 		valIdents[i] = ctx.TempIdent("_v")
 	}
 
-	tpl, args := tryQuoteTemplate(k, expr, errIdent, valIdents, outer)
-	stmts, err := quote.Stmts(tpl, args)
+	coreTpl, coreBinds, err := tryCoreQuote(k, inner, errIdent, valIdents, ctx, outer)
 	if err != nil {
-		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
+		return nil, err
+	}
+	core, err := macro.Quote(coreTpl, coreBinds)
+	if err != nil {
+		return nil, err
+	}
+	coreStmts, err := core.ToStmts()
+	if err != nil {
+		return nil, err
+	}
+	stmts := coreStmts
+
+	if _, ok := binds.Elems("vals"); ok {
+		if k > 0 {
+			successTpl, successBinds := trySuccessReturnQuote(k, valIdents)
+			success, err := macro.Quote(successTpl, successBinds)
+			if err != nil {
+				return nil, err
+			}
+			successStmts, err := success.ToStmts()
+			if err != nil {
+				return nil, err
+			}
+			stmts = append(stmts, successStmts...)
+		}
+	} else if lhsElems, ok := binds.Elems("lhs"); ok {
+		if k > 0 {
+			successTpl, successBinds, err := trySuccessAssignQuote(site, call, lhsElems, valIdents, k)
+			if err != nil {
+				return nil, err
+			}
+			if successTpl != "" {
+				success, err := macro.Quote(successTpl, successBinds)
+				if err != nil {
+					return nil, err
+				}
+				successStmts, err := success.ToStmts()
+				if err != nil {
+					return nil, err
+				}
+				stmts = append(stmts, successStmts...)
+			}
+		}
+	} else {
+		if k != 0 {
+			return nil, fmt.Errorf("Try0 only allowed as statement for k=0")
+		}
 	}
 
-	switch ctx.Site() {
-	case macro.SiteAssign:
-		assignStmt, ok := findAssignStmt(ctx)
-		if !ok {
-			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "expected assignment context")
-		}
-		successTpl, successArgs, err := trySuccessAssignTemplate(assignStmt, valIdents, k)
-		if err != nil {
-			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
-		}
-		if successTpl != "" {
-			success, err := quote.Stmts(successTpl, successArgs)
-			if err != nil {
-				return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
-			}
-			stmts = append(stmts, success...)
-		}
-		return tryExpandResult(ctx, stmts), nil
-	case macro.SiteReturn:
-		if k == 0 {
-			return tryExpandResult(ctx, stmts), nil
-		}
-		successTpl, successArgs := trySuccessReturnTemplate(k, valIdents)
-		success, err := quote.Stmts(successTpl, successArgs)
-		if err != nil {
-			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "%v", err)
-		}
-		stmts = append(stmts, success...)
-		return tryExpandResult(ctx, stmts), nil
-	case macro.SiteStmt:
-		if k != 0 {
-			return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Try0 only allowed as statement for k=0")
-		}
-		return tryExpandResult(ctx, stmts), nil
-	default:
-		return macro.CallExpandResult{}, macro.ErrorAt(fset, ctx.MacroPos(), "Try* not allowed in expression position")
-	}
+	macro.StampStmtPos(site.MacroPos(), stmts)
+	return macro.WrapStmts(stmts), nil
 }
 
-func tryQuoteTemplate(k int, call ast.Expr, errIdent *ast.Ident, valIdents []*ast.Ident, outer []resultType) (string, map[string]any) {
-	args := map[string]any{
-		"err":  errIdent,
-		"call": call,
+func tryCoreQuote(k int, inner macro.Syntax, errIdent *ast.Ident, valIdents []*ast.Ident, ctx macro.Context, outer *types.Tuple) (string, map[string]macro.Syntax, error) {
+	binds := map[string]macro.Syntax{
+		"err":  macro.WrapExpr(errIdent),
+		"call": inner,
 	}
 	var b strings.Builder
 	if k == 0 {
@@ -97,32 +146,32 @@ func tryQuoteTemplate(k int, call ast.Expr, errIdent *ast.Ident, valIdents []*as
 			}
 			key := fmt.Sprintf("v%d", i)
 			fmt.Fprintf(&b, "#%s", key)
-			args[key] = valIdents[i]
+			binds[key] = macro.WrapExpr(valIdents[i])
 		}
 		b.WriteString(", #err := #call")
 	}
 	b.WriteString("\nif #err != nil {\n    return ")
-	for i := 0; i < len(outer)-1; i++ {
+	for i := 0; i < outer.Len()-1; i++ {
 		if i > 0 {
 			b.WriteString(", ")
 		}
 		key := fmt.Sprintf("z%d", i)
 		fmt.Fprintf(&b, "#%s", key)
-		if len(outer[i].names) > 0 {
-			args[key] = outer[i].names[0].Name
-		} else {
-			args[key] = zeroValueExpr(outer[i].typ)
+		z, err := macro.ZeroSyntax(ctx, outer.At(i).Type())
+		if err != nil {
+			return "", nil, err
 		}
+		binds[key] = z
 	}
-	if len(outer) > 1 {
+	if outer.Len() > 1 {
 		b.WriteString(", ")
 	}
 	b.WriteString("#err\n}")
-	return b.String(), args
+	return b.String(), binds, nil
 }
 
-func trySuccessReturnTemplate(k int, valIdents []*ast.Ident) (string, map[string]any) {
-	args := map[string]any{"nil": "nil"}
+func trySuccessReturnQuote(k int, valIdents []*ast.Ident) (string, map[string]macro.Syntax) {
+	binds := map[string]macro.Syntax{"nil": macro.WrapExpr(ast.NewIdent("nil"))}
 	var b strings.Builder
 	b.WriteString("return ")
 	for i := 0; i < k; i++ {
@@ -131,29 +180,29 @@ func trySuccessReturnTemplate(k int, valIdents []*ast.Ident) (string, map[string
 		}
 		key := fmt.Sprintf("v%d", i)
 		fmt.Fprintf(&b, "#%s", key)
-		args[key] = valIdents[i]
+		binds[key] = macro.WrapExpr(valIdents[i])
 	}
 	if k > 0 {
 		b.WriteString(", ")
 	}
 	b.WriteString("#nil")
-	return b.String(), args
+	return b.String(), binds
 }
 
-func trySuccessAssignTemplate(orig *ast.AssignStmt, vals []*ast.Ident, k int) (string, map[string]any, error) {
+func trySuccessAssignQuote(site macro.Syntax, call *ast.CallExpr, lhsElems []macro.Syntax, vals []*ast.Ident, k int) (string, map[string]macro.Syntax, error) {
 	if k == 0 {
 		return "", nil, nil
 	}
-	tok := ":="
-	if orig.Tok.String() == "=" {
-		tok = "="
+	tok := token.DEFINE
+	if assign, ok := findAssignStmtForCall(site, call); ok && assign.Tok == token.ASSIGN {
+		tok = token.ASSIGN
 	}
-	args := map[string]any{}
+	binds := map[string]macro.Syntax{}
 	var lhs strings.Builder
-	nLHS := min(k, len(orig.Lhs))
-	if len(orig.Lhs) == 1 && k > 1 {
+	nLHS := min(k, len(lhsElems))
+	if len(lhsElems) == 1 && k > 1 {
 		nLHS = 1
-		args["lhs0"] = orig.Lhs[0]
+		binds["lhs0"] = lhsElems[0]
 		lhs.WriteString("#lhs0")
 	} else {
 		for i := 0; i < nLHS; i++ {
@@ -162,15 +211,15 @@ func trySuccessAssignTemplate(orig *ast.AssignStmt, vals []*ast.Ident, k int) (s
 			}
 			key := fmt.Sprintf("lhs%d", i)
 			fmt.Fprintf(&lhs, "#%s", key)
-			args[key] = orig.Lhs[i]
+			binds[key] = lhsElems[i]
 		}
 	}
 	var rhs strings.Builder
 	nRHS := k
-	if len(orig.Lhs) == 1 && k > 1 {
+	if len(lhsElems) == 1 && k > 1 {
 		nRHS = k
 	} else {
-		nRHS = min(k, len(orig.Lhs))
+		nRHS = min(k, len(lhsElems))
 	}
 	for i := 0; i < nRHS; i++ {
 		if i > 0 {
@@ -178,76 +227,28 @@ func trySuccessAssignTemplate(orig *ast.AssignStmt, vals []*ast.Ident, k int) (s
 		}
 		key := fmt.Sprintf("v%d", i)
 		fmt.Fprintf(&rhs, "#%s", key)
-		args[key] = vals[i]
+		binds[key] = macro.WrapExpr(vals[i])
 	}
-	tpl := fmt.Sprintf("%s %s %s", lhs.String(), tok, rhs.String())
-	return tpl, args, nil
+	tpl := fmt.Sprintf("%s %s %s;", lhs.String(), tok.String(), rhs.String())
+	return tpl, binds, nil
 }
 
-func tryExpandResult(ctx macro.CallContext, stmts []ast.Stmt) macro.CallExpandResult {
-	macro.StampStmtPos(ctx.MacroPos(), stmts)
-	var target macro.SpliceTarget
-	switch ctx.Site() {
-	case macro.SiteAssign:
-		target = macro.SpliceReplaceAssignStmt
-	case macro.SiteReturn:
-		target = macro.SpliceReplaceReturnStmt
-	case macro.SiteStmt:
-		target = macro.SpliceReplaceExprStmt
-	default:
-		target = macro.SpliceReplaceAssignStmt
+func enclosingOuterResults(ctx macro.Context, site macro.Syntax) (*types.Tuple, error) {
+	results, err := macro.EnclosingResults(ctx, site)
+	if err != nil {
+		return nil, err
 	}
-	return macro.CallExpandResult{Target: target, Stmts: stmts}
-}
-
-type resultType struct {
-	typ   types.Type
-	names []*ast.Ident
-}
-
-func outerResults(ctx macro.CallContext) ([]resultType, error) {
-	var results *ast.FieldList
-	switch fn := ctx.EnclosingFunc().(type) {
-	case *ast.FuncDecl:
-		results = fn.Type.Results
-	case *ast.FuncLit:
-		results = fn.Type.Results
-	default:
-		return nil, fmt.Errorf("invalid enclosing function")
-	}
-	if results == nil || len(results.List) == 0 {
+	if results == nil || results.Len() == 0 {
 		return nil, fmt.Errorf("function must return at least error as last value")
 	}
-	var sig *types.Signature
-	if fn, ok := ctx.EnclosingFunc().(*ast.FuncDecl); ok && fn.Name != nil {
-		if obj, ok := ctx.Types().Defs[fn.Name]; ok {
-			if f, ok := obj.(*types.Func); ok {
-				sig, _ = f.Type().(*types.Signature)
-			}
-		}
-	}
-	var out []resultType
-	if sig != nil && sig.Results() != nil {
-		for i := 0; i < sig.Results().Len(); i++ {
-			out = append(out, resultType{typ: sig.Results().At(i).Type(), names: nil})
-		}
-	} else {
-		for _, f := range results.List {
-			t := ctx.Types().TypeOf(f.Type)
-			if t == nil {
-				return nil, fmt.Errorf("cannot type outer results")
-			}
-			out = append(out, resultType{typ: t, names: f.Names})
-		}
-	}
-	last := out[len(out)-1]
-	if !isErrorType(last.typ) {
+	last := results.At(results.Len() - 1).Type()
+	if !isErrorType(last) {
 		return nil, fmt.Errorf("outer function must end with error return")
 	}
-	return out, nil
+	return results, nil
 }
 
-func calleePayloadCount(ctx macro.CallContext, expr ast.Expr) (k int, err error) {
+func calleePayloadCount(ctx macro.Context, expr ast.Expr) (k int, err error) {
 	tv, ok := ctx.Types().Types[expr]
 	if !ok {
 		return 0, fmt.Errorf("cannot type inner expression")
@@ -315,51 +316,37 @@ func checkStubMatchesK(stub string, k int) error {
 	return nil
 }
 
-func zeroValueExpr(t types.Type) ast.Expr {
-	switch u := t.Underlying().(type) {
-	case *types.Basic:
-		switch u.Kind() {
-		case types.String:
-			return &ast.BasicLit{Kind: token.STRING, Value: `""`}
-		case types.Bool:
-			return &ast.Ident{Name: "false"}
-		case types.Int, types.Int8, types.Int16, types.Int32, types.Int64,
-			types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64, types.Uintptr,
-			types.Float32, types.Float64, types.Complex64, types.Complex128:
-			return &ast.BasicLit{Kind: token.INT, Value: "0"}
-		}
+func findAssignStmtForCall(site macro.Syntax, call *ast.CallExpr) (*ast.AssignStmt, bool) {
+	fc, ok := site.(macro.FileCarrier)
+	if !ok {
+		return nil, false
 	}
-	return &ast.Ident{Name: "nil"}
+	file := fc.ExpansionFile()
+	var found *ast.AssignStmt
+	ast.Inspect(file, func(n ast.Node) bool {
+		if a, ok := n.(*ast.AssignStmt); ok {
+			for _, rhs := range a.Rhs {
+				if rhs == call {
+					found = a
+					return false
+				}
+			}
+		}
+		return true
+	})
+	return found, found != nil
 }
 
-func findAssignStmt(ctx macro.CallContext) (*ast.AssignStmt, bool) {
-	call := ctx.Call()
-	var found *ast.AssignStmt
-	switch fn := ctx.EnclosingFunc().(type) {
-	case *ast.FuncDecl:
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			if a, ok := n.(*ast.AssignStmt); ok {
-				for _, rhs := range a.Rhs {
-					if rhs == call {
-						found = a
-						return false
-					}
-				}
-			}
-			return true
-		})
-	case *ast.FuncLit:
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			if a, ok := n.(*ast.AssignStmt); ok {
-				for _, rhs := range a.Rhs {
-					if rhs == call {
-						found = a
-						return false
-					}
-				}
-			}
-			return true
-		})
+func invokedName(fun ast.Expr) string {
+	switch f := fun.(type) {
+	case *ast.Ident:
+		return f.Name
+	case *ast.SelectorExpr:
+		if id, ok := f.X.(*ast.Ident); ok {
+			return id.Name + "." + f.Sel.Name
+		}
+		return f.Sel.Name
+	default:
+		return ""
 	}
-	return found, found != nil
 }

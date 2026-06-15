@@ -182,7 +182,7 @@ return io.ReadAll(f)
 | `.../derivestringer` | `.../derive` |
 | `DeriveStringer` | `Derive[fmt.Stringer]` |
 | `derive-stringer` | `derive` |
-| `DeriveStringerExpand` | `DeriveExpand` |
+| `DeriveStringerExpand` | `DeriveExpander` |
 
 ### wirejson — 补全 json tag
 
@@ -202,7 +202,17 @@ return io.ReadAll(f)
 | derive | `derive` | `github.com/arcane-craft/go-macro-contrib/derive` |
 | wirejson | `wire-json` | `github.com/arcane-craft/go-macro-contrib/wirejson` |
 
-`derive` / `wirejson` 需要带 Decl 宏能力的 go-macro；本地联调时请 `replace` 到含该能力的 `../go-macro`。
+`derive` / `wirejson` 需要带 **syntax-rules** 能力的 go-macro（`SyntaxCase` / `ExpandSyntax` / `Expand` API）；实现期请 `replace` 到 `feature-synatx-rule` 分支的 `../go-macro`，待核心发 tag 后再 bump `require`。
+
+各包 Expander 符号（`cmd/macro expand` 自动 link）：
+
+| 包 | Expander 变量 |
+|----|---------------|
+| inline | `InlineExpander` |
+| try | `TryExpander` |
+| with | `WithExpander` |
+| derive | `DeriveExpander` |
+| wirejson | `WireJSONExpander` |
 
 ### 与 go-macro 并列联调
 

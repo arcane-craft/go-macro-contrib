@@ -11,7 +11,7 @@ import (
 )
 
 func TestTryExpandAssignInlinesCallee(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
+	out, err := mactest.ExpandSyntax(try.TryExpander, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (int, error) { return 0, nil }
 func f() (int, error) {
@@ -22,18 +22,22 @@ func f() (int, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Stmts) != 3 {
-		t.Fatalf("want 3 stmts, got %d", len(result.Stmts))
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
 	}
-	assign0, ok := result.Stmts[0].(*ast.AssignStmt)
+	if len(stmts) != 3 {
+		t.Fatalf("want 3 stmts, got %d", len(stmts))
+	}
+	assign0, ok := stmts[0].(*ast.AssignStmt)
 	if !ok || assign0.Tok != token.DEFINE || len(assign0.Lhs) != 2 || len(assign0.Rhs) != 1 {
-		t.Fatalf("first stmt: %T", result.Stmts[0])
+		t.Fatalf("first stmt: %T", stmts[0])
 	}
 	call, ok := assign0.Rhs[0].(*ast.CallExpr)
 	if !ok || mactest.IdentName(call.Fun) != "helper" {
 		t.Fatalf("rhs callee: %s", mactest.FormatExpr(nil, assign0.Rhs[0]))
 	}
-	ifStmt, ok := result.Stmts[1].(*ast.IfStmt)
+	ifStmt, ok := stmts[1].(*ast.IfStmt)
 	if !ok {
 		t.Fatal("second stmt not if")
 	}
@@ -51,7 +55,7 @@ func f() (int, error) {
 	if mactest.IdentName(ret.Results[1]) != mactest.IdentName(cond.X) {
 		t.Fatalf("returned err %q != cond %q", mactest.IdentName(ret.Results[1]), mactest.IdentName(cond.X))
 	}
-	assign1, ok := result.Stmts[2].(*ast.AssignStmt)
+	assign1, ok := stmts[2].(*ast.AssignStmt)
 	if !ok || len(assign1.Lhs) != 1 || mactest.IdentName(assign1.Lhs[0]) != "x" {
 		t.Fatalf("success assign lhs: %#v", assign1.Lhs)
 	}
@@ -61,7 +65,7 @@ func f() (int, error) {
 }
 
 func TestTryExpandReturnReplacesWithErrorHandling(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
+	out, err := mactest.ExpandSyntax(try.TryExpander, "Try", "try", `
 func Try[T any](v T, err error) (T, error) { panic("stub") }
 func helper() (int, error) { return 1, nil }
 func f() (int, error) {
@@ -71,12 +75,16 @@ func f() (int, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Stmts) < 3 {
-		t.Fatalf("want assign+if+return, got %d stmts", len(result.Stmts))
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
 	}
-	ret, ok := result.Stmts[len(result.Stmts)-1].(*ast.ReturnStmt)
+	if len(stmts) < 3 {
+		t.Fatalf("want assign+if+return, got %d stmts", len(stmts))
+	}
+	ret, ok := stmts[len(stmts)-1].(*ast.ReturnStmt)
 	if !ok || len(ret.Results) != 2 {
-		t.Fatalf("success return: %#v", result.Stmts[len(result.Stmts)-1])
+		t.Fatalf("success return: %#v", stmts[len(stmts)-1])
 	}
 	if mactest.IdentName(ret.Results[0]) == "" {
 		t.Fatalf("payload return should be temp ident, got %#v", ret.Results[0])
@@ -87,7 +95,7 @@ func f() (int, error) {
 }
 
 func TestTry0ExpandStmtSite(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try0", "try", `
+	out, err := mactest.ExpandSyntax(try.TryExpander, "Try0", "try", `
 func Try0(err error) { panic("stub") }
 func closer() error { return nil }
 func f() error {
@@ -98,20 +106,24 @@ func f() error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Stmts) != 2 {
-		t.Fatalf("Try0: want assign+if, got %d", len(result.Stmts))
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
 	}
-	assign := result.Stmts[0].(*ast.AssignStmt)
+	if len(stmts) != 2 {
+		t.Fatalf("Try0: want assign+if, got %d", len(stmts))
+	}
+	assign := stmts[0].(*ast.AssignStmt)
 	if len(assign.Lhs) != 1 || mactest.IdentName(assign.Rhs[0].(*ast.CallExpr).Fun) != "closer" {
 		t.Fatalf("Try0 assign: lhs=%d rhs=%s", len(assign.Lhs), mactest.FormatExpr(nil, assign.Rhs[0]))
 	}
-	if _, ok := result.Stmts[1].(*ast.IfStmt); !ok {
+	if _, ok := stmts[1].(*ast.IfStmt); !ok {
 		t.Fatal("Try0 missing if err")
 	}
 }
 
 func TestTry2ExpandAssign(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try2", "try", `
+	out, err := mactest.ExpandSyntax(try.TryExpander, "Try2", "try", `
 func Try2[A, B any](a A, b B, err error) (A, B) { panic("stub") }
 func pair() (int, string, error) { return 0, "", nil }
 func f() (int, string, error) {
@@ -122,7 +134,11 @@ func f() (int, string, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assign0 := result.Stmts[0].(*ast.AssignStmt)
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assign0 := stmts[0].(*ast.AssignStmt)
 	if len(assign0.Lhs) != 3 {
 		t.Fatalf("Try2 assign lhs count: %d", len(assign0.Lhs))
 	}
@@ -130,14 +146,14 @@ func f() (int, string, error) {
 	if !ok || mactest.IdentName(call.Fun) != "pair" {
 		t.Fatal("Try2 rhs not pair()")
 	}
-	assign1 := result.Stmts[2].(*ast.AssignStmt)
+	assign1 := stmts[2].(*ast.AssignStmt)
 	if len(assign1.Lhs) != 2 || len(assign1.Rhs) != 2 {
 		t.Fatalf("Try2 success assign: lhs=%d rhs=%d", len(assign1.Lhs), len(assign1.Rhs))
 	}
 }
 
 func TestTryExpandNamedReturnUsesStringZero(t *testing.T) {
-	result, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
+	out, err := mactest.ExpandSyntax(try.TryExpander, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (string, error) { return "", nil }
 func f() (msg string, err error) {
@@ -148,7 +164,11 @@ func f() (msg string, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ifStmt := result.Stmts[1].(*ast.IfStmt)
+	stmts, err := out.ToStmts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ifStmt := stmts[1].(*ast.IfStmt)
 	ret := ifStmt.Body.List[0].(*ast.ReturnStmt)
 	if lit, ok := ret.Results[0].(*ast.BasicLit); !ok || lit.Value != `""` {
 		t.Fatalf("named string zero: %#v", ret.Results[0])
@@ -156,7 +176,7 @@ func f() (msg string, err error) {
 }
 
 func TestTryExpandRejectNoErrorReturn(t *testing.T) {
-	_, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
+	_, err := mactest.ExpandSyntax(try.TryExpander, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (int, error) { return 0, nil }
 func f() int {
@@ -170,7 +190,7 @@ func f() int {
 }
 
 func TestTryExpandRejectExprSite(t *testing.T) {
-	_, err := mactest.ExpandCall(try.TryExpand, "Try", "try", `
+	_, err := mactest.ExpandSyntax(try.TryExpander, "Try", "try", `
 func Try[T any](v T, err error) T { panic("stub") }
 func helper() (int, error) { return 0, nil }
 func f() (int, error) {
@@ -178,8 +198,7 @@ func f() (int, error) {
 	return 0, nil
 }
 `)
-	if err == nil || !strings.Contains(err.Error(), "expression position") {
+	if err == nil || !strings.Contains(err.Error(), "no matching syntax rule") {
 		t.Fatalf("got %v", err)
 	}
 }
-

@@ -2,11 +2,12 @@ package derive_test
 
 import (
 	"fmt"
+	"go/ast"
 	"strings"
 	"testing"
 
-	"github.com/arcane-craft/go-macro-contrib/derive"
 	"github.com/arcane-craft/go-macro/macro/mactest"
+	"github.com/arcane-craft/go-macro-contrib/derive"
 )
 
 const deriveMarkerStub = `
@@ -25,7 +26,7 @@ func TestDeriveStubPromotesStringer(t *testing.T) {
 }
 
 func TestDeriveExpand(t *testing.T) {
-	result, err := mactest.ExpandDecl(derive.DeriveExpand, "derive", deriveMarkerStub+`
+	out, err := mactest.Expand(derive.DeriveExpander, "derive", deriveMarkerStub+`
 type Item struct {
 	Derive[fmt.Stringer]
 	A string
@@ -35,22 +36,21 @@ type Item struct {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Fields) != 2 {
-		t.Fatalf("fields: %d", len(result.Fields))
+	decls, err := out.ToDecls()
+	if err != nil {
+		t.Fatal(err)
 	}
-	foundString := false
-	for _, m := range result.Methods {
-		if m.Name.Name == "String" {
-			foundString = true
-		}
+	ts := typeSpecFromDecls(t, decls)
+	if len(ts.Type.(*ast.StructType).Fields.List) != 2 {
+		t.Fatalf("fields: %d", len(ts.Type.(*ast.StructType).Fields.List))
 	}
-	if !foundString {
+	if !hasStringMethodDecl(decls) {
 		t.Fatal("expected String method")
 	}
 }
 
 func TestDeriveSkipsWhenTargetDeclaresString(t *testing.T) {
-	result, err := mactest.ExpandDecl(derive.DeriveExpand, "derive", deriveMarkerStub+`
+	out, err := mactest.Expand(derive.DeriveExpander, "derive", deriveMarkerStub+`
 func (Item) String() string { return "custom" }
 
 type Item struct {
@@ -61,19 +61,17 @@ type Item struct {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var stringMethods int
-	for _, m := range result.Methods {
-		if m.Name.Name == "String" {
-			stringMethods++
-		}
+	decls, err := out.ToDecls()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if stringMethods != 1 {
-		t.Fatalf("expected exactly one String method, got %d", stringMethods)
+	if hasStringMethodDecl(decls) {
+		t.Fatal("expected no generated String method")
 	}
 }
 
 func TestDeriveSkipsWhenOtherEmbedPromotesString(t *testing.T) {
-	result, err := mactest.ExpandDecl(derive.DeriveExpand, "derive", deriveMarkerStub+`
+	out, err := mactest.Expand(derive.DeriveExpander, "derive", deriveMarkerStub+`
 type Helper struct{}
 
 func (Helper) String() string { return "from-helper" }
@@ -86,16 +84,18 @@ type Item struct {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range result.Methods {
-		if m.Name.Name == "String" {
-			t.Fatal("expected no generated String method when Helper promotes String")
-		}
+	decls, err := out.ToDecls()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasStringMethodDecl(decls) {
+		t.Fatal("expected no generated String method when Helper promotes String")
 	}
 }
 
 func TestDeriveRejectsInvalidTypeArg(t *testing.T) {
 	cases := []struct {
-		name   string
+		name    string
 		snippet string
 	}{
 		{
@@ -127,7 +127,7 @@ type Item struct {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := mactest.ExpandDecl(derive.DeriveExpand, "derive", tc.snippet)
+			_, err := mactest.Expand(derive.DeriveExpander, "derive", tc.snippet)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -136,4 +136,28 @@ type Item struct {
 			}
 		})
 	}
+}
+
+func typeSpecFromDecls(t *testing.T, decls []ast.Decl) *ast.TypeSpec {
+	t.Helper()
+	for _, d := range decls {
+		if gd, ok := d.(*ast.GenDecl); ok {
+			for _, spec := range gd.Specs {
+				if ts, ok := spec.(*ast.TypeSpec); ok {
+					return ts
+				}
+			}
+		}
+	}
+	t.Fatal("no TypeSpec in decls")
+	return nil
+}
+
+func hasStringMethodDecl(decls []ast.Decl) bool {
+	for _, d := range decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == "String" {
+			return true
+		}
+	}
+	return false
 }

@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arcane-craft/go-macro-contrib/wirejson"
 	"github.com/arcane-craft/go-macro/macro/mactest"
+	"github.com/arcane-craft/go-macro-contrib/wirejson"
 )
 
 func TestWireJSONExpand(t *testing.T) {
-	result, err := mactest.ExpandDecl(wirejson.WireJSONExpand, "wire-json", `
+	out, err := mactest.Expand(wirejson.WireJSONExpander, "wire-json", `
 type WireJSON struct{}
 
 type User struct {
@@ -22,19 +22,31 @@ type User struct {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Fields) != 2 {
-		t.Fatalf("fields: %d", len(result.Fields))
+	decls, err := out.ToDecls()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if tag := fieldTag(result.Fields[0]); tag != `json:"id"` {
+	if len(decls) != 1 {
+		t.Fatalf("decls: %d", len(decls))
+	}
+	ts, ok := decls[0].(*ast.GenDecl).Specs[0].(*ast.TypeSpec)
+	if !ok {
+		t.Fatalf("decl: %T", decls[0])
+	}
+	st := ts.Type.(*ast.StructType)
+	if len(st.Fields.List) != 2 {
+		t.Fatalf("fields: %d", len(st.Fields.List))
+	}
+	if tag := fieldTag(st.Fields.List[0]); tag != `json:"id"` {
 		t.Fatalf("ID tag: %q", tag)
 	}
-	if tag := fieldTag(result.Fields[1]); tag != `json:"name"` {
+	if tag := fieldTag(st.Fields.List[1]); tag != `json:"name"` {
 		t.Fatalf("Name tag: %q", tag)
 	}
 }
 
 func TestWireJSONExpandOmitEmpty(t *testing.T) {
-	result, err := mactest.ExpandDecl(wirejson.WireJSONExpand, "wire-json", `
+	out, err := mactest.Expand(wirejson.WireJSONExpander, "wire-json", `
 type WireJSON struct{}
 
 type Profile struct {
@@ -46,16 +58,22 @@ type Profile struct {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tag := fieldTag(result.Fields[0]); tag != `json:"id"` {
+	decls, err := out.ToDecls()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := decls[0].(*ast.GenDecl).Specs[0].(*ast.TypeSpec)
+	st := ts.Type.(*ast.StructType)
+	if tag := fieldTag(st.Fields.List[0]); tag != `json:"id"` {
 		t.Fatalf("ID tag: %q", tag)
 	}
-	if tag := fieldTag(result.Fields[1]); tag != `json:"role,omitempty"` {
+	if tag := fieldTag(st.Fields.List[1]); tag != `json:"role,omitempty"` {
 		t.Fatalf("Role tag: %q", tag)
 	}
 }
 
-func TestWireJSONExpandPreservesMethods(t *testing.T) {
-	result, err := mactest.ExpandDecl(wirejson.WireJSONExpand, "wire-json", `
+func TestWireJSONExpandOutIsTypeSpecOnly(t *testing.T) {
+	out, err := mactest.Expand(wirejson.WireJSONExpander, "wire-json", `
 type WireJSON struct{}
 
 type User struct {
@@ -68,19 +86,20 @@ func (User) Validate() error { return nil }
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for _, m := range result.Methods {
-		if m.Name.Name == "Validate" {
-			found = true
-		}
+	decls, err := out.ToDecls()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Fatal("expected Validate method preserved")
+	if len(decls) != 1 {
+		t.Fatalf("expected single TypeSpec decl, got %d", len(decls))
+	}
+	if _, ok := decls[0].(*ast.GenDecl).Specs[0].(*ast.TypeSpec); !ok {
+		t.Fatalf("expected TypeSpec, got %T", decls[0])
 	}
 }
 
 func TestWireJSONExpandConflictingTag(t *testing.T) {
-	_, err := mactest.ExpandDecl(wirejson.WireJSONExpand, "wire-json", `
+	_, err := mactest.Expand(wirejson.WireJSONExpander, "wire-json", `
 type WireJSON struct{}
 
 type User struct {
